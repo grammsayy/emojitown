@@ -342,3 +342,26 @@ export function requireUnlocked(ctx: Ctx, guildId: string, eventId: string, day:
   if (!door) throw new UserError(`Door ${day} has no content.`);
   return { event: ev, door, times };
 }
+
+/** Sets an Advent event's claim deadline (local `YYYY-MM-DD HH:mm`). */
+export function setClaimDeadline(ctx: Ctx, guildId: string, eventId: string, value: string, actorId: string): SeasonEvent {
+  return tx(ctx, () => {
+    const ev = requireEvent(ctx, guildId, eventId, 'advent');
+    if (ev.state === 'ended') throw new UserError('This Advent event has ended.');
+    const m = /^(\d{4}-\d{2}-\d{2})(?:[ T](\d{1,2}:\d{2}))?$/.exec(value.trim());
+    if (!m) throw new UserError('The claim deadline must look like 2026-12-25 00:00.');
+    const local = `${m[1]}T${(m[2] ?? '00:00').padStart(5, '0')}`;
+    const tz = getConfig(ctx, guildId).timezone;
+    let at: number;
+    try {
+      at = localToMs(local, tz);
+    } catch {
+      throw new UserError('The claim deadline must look like 2026-12-25 00:00.');
+    }
+    const win = eventWindow(ev, tz);
+    if (at <= win.startsAt || at > win.endsAt) throw new UserError('The claim deadline must fall after the start and no later than the end of the event.');
+    setEventState(ctx, ev, { claim_deadline_local: local });
+    audit(ctx, { guildId, actorId, action: 'advent.claim-deadline', eventId, before: { claimDeadline: ev.claimDeadlineLocal }, after: { claimDeadline: local } });
+    return requireEvent(ctx, guildId, eventId);
+  });
+}

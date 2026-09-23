@@ -4,7 +4,7 @@
   "description": "emojitown seasonal Discord bot: Snowball Fights, Trick or Treat, Advent Calendar and Candy Counter",
   "main": "dist/src/index.js",
   "scripts": {
-    "build": "tsc -p .",
+    "build": "tsc -p tsconfig.build.json",
     "start": "node dist/src/index.js",
     "dev": "tsx src/index.ts",
     "deploy-commands": "tsx scripts/deploy-commands.ts",
@@ -15,7 +15,7 @@
     "type": "git",
     "url": "git+https://github.com/grammsayy/emojitown.git"
   },
-  "license": "GPL-3.0-or-later",
+  "license": "UNLICENSED",
   "bugs": {
     "url": "https://github.com/grammsayy/emojitown/issues"
   },
