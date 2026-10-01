@@ -44,6 +44,11 @@ built-in `node:sqlite`, so nothing needs compiling and no C++ build tools are re
 **Updating on Windows:** stop the bot (Ctrl+C in its window), then run `.\update.cmd` in the project folder. It pulls
 the latest version, reinstalls packages, rebuilds and starts the bot. Your `.env` and `data` folder are kept.
 
+**Bot hosting panels (PebbleHost, other Pterodactyl hosts):** choose Node.js 22 or newer, then upload
+`package.json`, `package-lock.json`, `index.js`, the `dist` folder (built on your PC with `npm run build`), your `.env`
+and your `data` folder. Don't upload `node_modules`; the panel installs packages itself. Set the startup file to
+`index.js`. The bot reads `.env` itself, so no extra settings are needed.
+
 **Running 24/7 (NAS or any Docker host):** put the project folder on the machine, add your `.env` next to
 `docker-compose.yml`, and run `docker compose up -d --build` (or create a *Project* from that folder in Synology
 Container Manager / QNAP Container Station / Portainer). It restarts by itself after crashes and reboots, and keeps all

@@ -11,6 +11,14 @@ import { inviteUrl, route } from './discord/router.js';
 import { auditLogger, syncChampionRole, type Bot } from './discord/runtime.js';
 import { startScheduler } from './discord/scheduler.js';
 
+// Hosting panels often start the bot with plain `node`, so read .env here as
+// well. Variables already set in the environment take priority.
+try {
+  process.loadEnvFile();
+} catch {
+  // No .env file: use the environment as it is.
+}
+
 const config = loadConfig();
 if (config.databasePath !== ':memory:') mkdirSync(dirname(config.databasePath), { recursive: true });
 
