@@ -1,4 +1,6 @@
-import { ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
+import { ActionRowBuilder, AttachmentBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
+import { exportSheet, planImport, SHEET_FILTERS, type ImportPlan, type SheetFilter } from '../../domain/itemSheet.js';
+import { fetchAttachmentText } from './season.js';
 import { RARITIES, type HalloweenVisitor, type Rarity } from '../../content/types.js';
 import { audit } from '../../domain/audit.js';
 import { CLASS_LABEL, getClasses, setClass } from '../../domain/classes.js';
@@ -15,10 +17,11 @@ import {
   findVisitorByQuery,
   isPlaceholder,
   removeVisitors,
+  savePack,
   type VisitorInput,
 } from '../../domain/visitors.js';
 import { storeAttachedImage } from '../images.js';
-import { reply, type Button, type ChatInput, type Component, type HandlerSet, type Modal } from '../interaction.js';
+import { askConfirm, reply, type Button, type ChatInput, type Component, type HandlerSet, type Modal } from '../interaction.js';
 import { assertLevel, type Bot } from '../runtime.js';
 import { cid, COLORS, embed, field, pager, truncate } from '../ui.js';
 import { halloweenPreview } from './halloween.js';
@@ -215,6 +218,58 @@ export function visitorAdminChoices(bot: Bot, guildId: string, query: string, fo
   return choices.slice(0, 25);
 }
 
+const FILTER_LABEL: Record<SheetFilter, string> = Object.fromEntries(SHEET_FILTERS.map((f) => [f.value, f.name])) as Record<SheetFilter, string>;
+
+async function exportItems(bot: Bot, i: ChatInput) {
+  const filter = (i.options.getString('rarity') ?? 'all') as SheetFilter;
+  const { csv, count } = exportSheet(currentPack(bot.ctx, i.guildId), filter);
+  if (count === 0) throw new UserError(`There are no ${FILTER_LABEL[filter].toLowerCase()} items to export.`);
+  await reply(i, {
+    content:
+      `**${count} ${FILTER_LABEL[filter].toLowerCase()} item${count === 1 ? '' : 's'}**, one per row. Nothing changed.\n` +
+      '**How to edit:** open the file in Google Sheets (File → Import → Upload) or Excel (Data → From Text/CSV, UTF-8). ' +
+      'Change names, rarities, descriptions, picture links or texts. **Don\'t change `item_id` or `visitor_id`.** ' +
+      'To add an item or visitor, add a row with `item_id` empty. Save as CSV (in Excel: **CSV UTF-8**) and upload it with `/visitor import`.',
+    files: [new AttachmentBuilder(Buffer.from(csv, 'utf8'), { name: `halloween-items-${filter}.csv` })],
+  });
+}
+
+function summary(plan: ImportPlan): string {
+  const c = plan.counts;
+  const parts = [
+    c.itemsChanged && `${c.itemsChanged} item${c.itemsChanged === 1 ? '' : 's'} changed`,
+    c.visitorsChanged && `${c.visitorsChanged} visitor${c.visitorsChanged === 1 ? '' : 's'} changed`,
+    c.visitorsAdded && `${c.visitorsAdded} new visitor${c.visitorsAdded === 1 ? '' : 's'}`,
+    c.itemsAdded && `${c.itemsAdded} new item${c.itemsAdded === 1 ? '' : 's'}`,
+  ].filter(Boolean);
+  return parts.join(' · ');
+}
+
+function changeList(plan: ImportPlan, max = 25): string {
+  const shown = plan.changes.slice(0, max).map((c) => `• ${c}`);
+  if (plan.changes.length > max) shown.push(`…and ${plan.changes.length - max} more`);
+  return truncate(shown.join('\n'), 3800);
+}
+
+async function importItems(bot: Bot, i: ChatInput) {
+  const file = i.options.getAttachment('file', true);
+  if (file.size > 2_000_000) throw new UserError('The file must be 2 MB or smaller.');
+  if (!/\.(csv|txt)$/i.test(file.name)) throw new UserError('Upload the spreadsheet saved as a .csv file.');
+  const csvText = await fetchAttachmentText(file.url);
+  const plan = planImport(bot.ctx, i.guildId, currentPack(bot.ctx, i.guildId), csvText);
+  if (plan.errors.length) {
+    const errs = plan.errors.slice(0, 20).map((e) => `• ${e}`);
+    if (plan.errors.length > 20) errs.push(`…and ${plan.errors.length - 20} more`);
+    await reply(i, { embeds: [embed(COLORS.error, 'Import stopped. Nothing changed.', `Fix these in the spreadsheet and upload it again:\n${truncate(errs.join('\n'), 3900)}`)] });
+    return;
+  }
+  if (!plan.changes.length) {
+    await reply(i, '**Nothing changed.** The spreadsheet matches the current visitors and items.');
+    return;
+  }
+  await askConfirm(bot, i, 'visitor.import', { csvText }, embed(COLORS.warn, `Apply these changes? ${summary(plan)}`, changeList(plan)));
+}
+
 export const visitorHandlers: HandlerSet = {
   chat: {
     'visitor add': add,
@@ -222,6 +277,21 @@ export const visitorHandlers: HandlerSet = {
     'visitor remove': remove,
     'visitor list': (bot, i) => reply(i, listView(bot, i.guildId, 1)),
     'setup class': setupClass,
+    'visitor export': exportItems,
+    'visitor import': importItems,
+  },
+  confirms: {
+    'visitor.import': {
+      level: 'admin',
+      run: async (bot, i, { csvText }: { csvText: string }) => {
+        // Re-check against the latest content in case something changed since the preview.
+        const plan = planImport(bot.ctx, i.guildId, currentPack(bot.ctx, i.guildId), csvText);
+        if (plan.errors.length) throw new UserError(`The spreadsheet no longer applies cleanly: ${plan.errors[0]}`);
+        if (!plan.changes.length) return '**Nothing changed.**';
+        savePack(bot.ctx, i.guildId, plan.pack, i.user.id, 'visitor.import', { counts: plan.counts });
+        return embed(COLORS.hit, `Imported: ${summary(plan)}`, `**What changed**\n${changeList(plan)}`);
+      },
+    },
   },
   components: {
     visitorform: submitForm,

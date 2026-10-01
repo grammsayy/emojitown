@@ -72,6 +72,8 @@ Development: `npm test` (Vitest), `npm run typecheck`, `npm run dev` (runs from 
 | `win_text:` (on add/edit) | The text on the win card, e.g. `As a thank you, they give {winner} one **{item}**`. Placeholders: `{winner}`, `{item}`, `{name}`, `{request}`. |
 | `/visitor remove visitor:<name>` | Remove one visitor, or pick **All placeholder visitors**. Visitors someone already collected from are retired instead, so nobody loses items. |
 | `/visitor list` | Every visitor with its class, plus each class's share of visits and bonus candy. |
+| `/visitor export rarity:Common` | Download items as a spreadsheet (CSV), one row per item: all, Common, Uncommon + Rare, or one rarity. |
+| `/visitor import file:` | Upload the edited spreadsheet. Every row is checked (errors list the row number), then a summary of changes is shown and applied only on **Confirm**. Rows with an empty `item_id` add new items/visitors. Don't change `item_id`/`visitor_id`. Accepts comma or semicolon CSV (Excel: save as **CSV UTF-8**). |
 
 How a visit is chosen: first a class, weighted by its chance (only classes that currently have visitors count), then
 one of that class's visitors at random. The winner gets the normal candy plus the class bonus (default +0 / +2 / +5 / +10),

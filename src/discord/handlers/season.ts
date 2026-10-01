@@ -153,13 +153,18 @@ export function auditEmbed(bot: Bot, guildId: string, member: { id: string; disp
 
 const ATTACHMENT_HOSTS = ['cdn.discordapp.com', 'media.discordapp.net'];
 
-/** Downloads an attached JSON file from Discord's CDN. */
-export async function fetchAttachmentJson(url: string): Promise<unknown> {
+/** Downloads an attached text file from Discord's CDN. */
+export async function fetchAttachmentText(url: string): Promise<string> {
   const u = new URL(url);
   if (u.protocol !== 'https:' || !ATTACHMENT_HOSTS.includes(u.hostname)) throw new UserError('Attach the file directly to the command.');
   const res = await fetch(u, { signal: AbortSignal.timeout(10_000), redirect: 'error' });
   if (!res.ok) throw new UserError(`Could not download the file (HTTP ${res.status}).`);
-  return parsePackJson(await res.text());
+  return res.text();
+}
+
+/** Downloads an attached JSON file from Discord's CDN. */
+export async function fetchAttachmentJson(url: string): Promise<unknown> {
+  return parsePackJson(await fetchAttachmentText(url));
 }
 
 /** Past and present events for `season` autocomplete. */

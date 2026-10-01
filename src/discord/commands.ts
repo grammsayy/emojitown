@@ -202,7 +202,31 @@ const visitorCommand = command('visitor', 'Create and edit Halloween visitors (a
       .setDescription('Remove a visitor (or all placeholder visitors). Collected items are kept.')
       .addStringOption((o) => o.setName('visitor').setDescription('Which visitor').setRequired(true).setAutocomplete(true)),
   )
-  .addSubcommand((s) => s.setName('list').setDescription('All visitors, their classes and pictures'));
+  .addSubcommand((s) => s.setName('list').setDescription('All visitors, their classes and pictures'))
+  .addSubcommand((s) =>
+    s
+      .setName('export')
+      .setDescription('Download items as a spreadsheet (CSV) to mass-edit')
+      .addStringOption((o) =>
+        o
+          .setName('rarity')
+          .setDescription('Which items (default: all)')
+          .addChoices(
+            { name: 'All items', value: 'all' },
+            { name: 'Common', value: 'common' },
+            { name: 'Uncommon + Rare', value: 'uncommon-rare' },
+            { name: 'Uncommon', value: 'uncommon' },
+            { name: 'Rare', value: 'rare' },
+            { name: 'Legendary', value: 'legendary' },
+          ),
+      ),
+  )
+  .addSubcommand((s) =>
+    s
+      .setName('import')
+      .setDescription('Upload an edited spreadsheet; you confirm the changes before they apply')
+      .addAttachmentOption((o) => o.setName('file').setDescription('The CSV from /visitor export, edited').setRequired(true)),
+  );
 
 // ── /admin: running the games (Manage Server) ────────────────────────
 
