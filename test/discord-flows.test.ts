@@ -340,3 +340,28 @@ describe('command visibility follows which games are live', () => {
     expect(w.registered).not.toContain('trick');
   });
 });
+
+describe('changing visitor waits on a live Halloween', () => {
+  it('moves the already-booked visitor up and explains what it is waiting for', async () => {
+    const w = new World('2026-10-05T12:00:00Z');
+    await w.command('owner', 'setup halloween', { channel: 'spooky' }); // default 10–20 minute waits
+    const r = await w.command('owner', 'setup halloween', { wait_min: '10s', wait_max: '20s' });
+    expect(text(r)).toContain('**Shortest wait between visitors:** 10m → 10s');
+    expect(text(r)).toContain('**Next visitor:** moved up');
+
+    // Nobody has chatted: status says so instead of silently waiting.
+    w.ctx.advance(21_000);
+    await w.tick();
+    expect(w.sent.some((s) => s.channelId === 'spooky')).toBe(false);
+    expect(text(await w.command('owner', 'setup status'))).toContain('Post a message in <#spooky>');
+
+    // Someone chats: a visitor arrives within the 10s re-check (not a whole minute).
+    recordActivity(w.ctx, 'g1', 'spooky');
+    expect(text(await w.command('owner', 'setup status'))).toContain('Next visitor');
+    w.ctx.advance(10_000);
+    w.ctx.rolls = [0, 0, 0.1];
+    await w.tick();
+    expect(w.sent.some((s) => s.channelId === 'spooky')).toBe(true);
+    expect(text(await w.command('owner', 'setup status'))).toContain('A visitor is in <#spooky> right now');
+  });
+});

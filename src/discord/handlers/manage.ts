@@ -32,7 +32,8 @@ import { assertSafeStaffRole, syncChampionRole, type Bot } from '../runtime.js';
 import { COLORS, embed, field, when } from '../ui.js';
 import { doorPreview, postDoor, showDoorForm } from './advent.js';
 import { askGiveCandy, askUndoCandy, historyView } from './candy.js';
-import { cancelVisitor, fixItem, fixRole, halloweenPreview, setChampionRole, syncEncounterMessage } from './halloween.js';
+import { cancelVisitor, fixItem, fixRole, halloweenPreview, setChampionRole, syncEncounterMessage, visitorStatusText } from './halloween.js';
+import { rescheduleSpawnIfSooner } from '../../domain/halloween.js';
 import { announcementEmbed, auditEmbed, exportFile, fetchAttachmentJson, finishEnd, requireTargetEvent, stateLabel } from './season.js';
 import { askStatsFix, snowballPreview } from './snowball.js';
 
@@ -248,6 +249,11 @@ async function setupGame(bot: Bot, i: ChatInput, game: Feature) {
     if (changes.length) audit(bot.ctx, { guildId: i.guildId, actorId: i.user.id, action: `setup.${game}`, eventId: ev.id, after: { changes } });
   });
 
+  if (game === 'halloween' && (cfgPatch.hwSpawnMinS !== undefined || cfgPatch.hwSpawnMaxS !== undefined)) {
+    const at = rescheduleSpawnIfSooner(bot.ctx, i.guildId);
+    if (at !== null) changes.push(`**Next visitor:** moved up to ${when(at)}`);
+  }
+
   if (championRole) {
     const r = await setChampionRole(bot, i, championRole);
     changes.push(...r.changes);
@@ -274,6 +280,7 @@ async function setupGame(bot: Bot, i: ChatInput, game: Feature) {
       field('Candy', `${cfg.candyPerHalloweenWin} per win, max ${cfg.candyHalloweenDailyLimit}/day`, true),
       field('Champion role', cfg.championRoleId ? `<@&${cfg.championRoleId}>` : 'none (optional)', true),
     );
+    if (ev.state === 'active') e.addFields(field('Visitors right now', visitorStatusText(bot, i.guildId)));
   }
   if (game === 'advent') {
     const filled = listDoors(bot.ctx, i.guildId, ev.id).length;
@@ -366,6 +373,7 @@ async function setupStatus(bot: Bot, i: ChatInput) {
     }
     const win = windowFor(bot.ctx, ev);
     const lines = [`${ev.name}: ${stateLabel(ev)}`, `${when(win.startsAt)} → ${when(win.endsAt)}`, `Channels: ${channelList(featureChannelIds(bot, i.guildId, game))}`];
+    if (game === 'halloween' && ev.state === 'active') lines.push(visitorStatusText(bot, i.guildId));
     if (game !== 'advent') {
       const v = ev.contentVersion ?? latestVersion(bot.ctx, i.guildId, game);
       lines.push(v === 0 ? '⚠️ Using placeholder content (`/setup content`)' : `Content: v${v}`);

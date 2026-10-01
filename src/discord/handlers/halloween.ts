@@ -1,3 +1,4 @@
+import { discordTime, formatSeconds } from '../../util/time.js';
 import { ButtonStyle, type Guild, type MessageEditOptions, type Role, type User } from 'discord.js';
 import type { HalloweenItem, HalloweenPack, HalloweenVisitor, Rarity } from '../../content/types.js';
 import { audit } from '../../domain/audit.js';
@@ -21,6 +22,7 @@ import {
   previewEncounter,
   uniqueCount,
   visitorsProgress,
+  visitorStatus,
   type Encounter,
   type HalloweenAction,
 } from '../../domain/halloween.js';
@@ -294,6 +296,21 @@ export const halloweenHandlers: HandlerSet = {
     },
   },
 };
+
+/** Plain-language answer to "why isn't a visitor showing up?", for staff. */
+export function visitorStatusText(bot: Bot, guildId: string): string {
+  const st = visitorStatus(bot.ctx, guildId);
+  switch (st.kind) {
+    case 'not-live':
+      return 'Halloween is not live, so no visitors come.';
+    case 'visiting':
+      return `👻 A visitor is in <#${st.channelId}> right now (leaves ${discordTime(st.expiresAt, 'R')}).`;
+    case 'waiting-timer':
+      return `⏳ Next visitor ${discordTime(st.at, 'R')} in ${st.activeChannels.map((c) => `<#${c}>`).join(' or ')}.`;
+    case 'waiting-chat':
+      return `💬 Waiting for chat: visitors only come where someone has posted in the last ${formatSeconds(st.windowS)}. Post a message in ${st.channels.map((c) => `<#${c}>`).join(' or ') || 'the Halloween channel'}.`;
+  }
+}
 
 /** Item names for autocomplete. */
 export function itemChoices(bot: Bot, guildId: string, query: string): { name: string; value: string }[] {

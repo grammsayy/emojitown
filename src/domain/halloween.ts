@@ -124,6 +124,47 @@ export function scheduleNextSpawn(ctx: Ctx, guildId: string, eventId: string): n
   return at;
 }
 
+/**
+ * After the wait settings change, pull the already-booked next visitor forward
+ * if the new settings would bring one sooner. Never pushes it later.
+ */
+export function rescheduleSpawnIfSooner(ctx: Ctx, guildId: string): number | null {
+  const ev = getCurrentEvent(ctx, guildId, 'halloween');
+  if (!ev || ev.state !== 'active' || getOpenEncounter(ctx, guildId)) return null;
+  const state = getNextSpawn(ctx, guildId);
+  const candidate = ctx.now() + spawnInterval(ctx, getConfig(ctx, guildId));
+  if (state.eventId === ev.id && state.nextSpawnAt !== null && state.nextSpawnAt <= candidate) return null;
+  setNextSpawn(ctx, guildId, ev.id, candidate);
+  return candidate;
+}
+
+export type VisitorStatus =
+  | { kind: 'not-live' }
+  | { kind: 'visiting'; channelId: string; expiresAt: number }
+  | { kind: 'waiting-timer'; at: number; activeChannels: string[] }
+  | { kind: 'waiting-chat'; channels: string[]; windowS: number };
+
+/** Why a visitor is or isn't showing up right now, for staff. */
+export function visitorStatus(ctx: Ctx, guildId: string): VisitorStatus {
+  const ev = getCurrentEvent(ctx, guildId, 'halloween');
+  if (!ev || ev.state !== 'active') return { kind: 'not-live' };
+  const open = getOpenEncounter(ctx, guildId);
+  if (open) return { kind: 'visiting', channelId: open.channelId, expiresAt: open.expiresAt };
+  const cfg = getConfig(ctx, guildId);
+  const since = ctx.now() - cfg.hwActivityWindowS * 1000;
+  const channels = getChannels(ctx, guildId, 'halloween');
+  const active = channels.filter((channelId) => {
+    const r = ctx.db.prepare('SELECT last_human_at FROM channel_activity WHERE guild_id = ? AND channel_id = ?').get(guildId, channelId) as
+      | { last_human_at: number }
+      | undefined;
+    return r !== undefined && r.last_human_at >= since;
+  });
+  if (active.length === 0) return { kind: 'waiting-chat', channels, windowS: cfg.hwActivityWindowS };
+  const next = getNextSpawn(ctx, guildId);
+  const at = next.eventId === ev.id && next.nextSpawnAt !== null && next.nextSpawnAt < Number.MAX_SAFE_INTEGER ? next.nextSpawnAt : ctx.now();
+  return { kind: 'waiting-timer', at: Math.max(at, ctx.now()), activeChannels: active };
+}
+
 /** Records that a human spoke in a channel. Only timing is stored, never message text. */
 export function recordActivity(ctx: Ctx, guildId: string, channelId: string): void {
   ctx.db
@@ -195,7 +236,8 @@ export function tickHalloween(ctx: Ctx, guildId: string): HalloweenTick {
       return r !== undefined && r.last_human_at >= since;
     });
     if (active.length === 0) {
-      setNextSpawn(ctx, guildId, ev.id, now + MINUTE);
+      // Check again in a minute, or sooner when visitors are configured to come faster than that.
+      setNextSpawn(ctx, guildId, ev.id, now + Math.min(MINUTE, cfg.hwSpawnMinS * 1000));
       return { closed, spawned: null };
     }
 
