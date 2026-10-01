@@ -41,6 +41,9 @@ built-in `node:sqlite`, so nothing needs compiling and no C++ build tools are re
    pulling an update, rebuild and restart. `dist/scripts/deploy-commands.js` only cleans up command registrations
    left over from older versions.
 
+**Updating on Windows:** stop the bot (Ctrl+C in its window), then run `.\update.cmd` in the project folder. It pulls
+the latest version, reinstalls packages, rebuilds and starts the bot. Your `.env` and `data` folder are kept.
+
 Docker: `docker build -t emojitown-bot .` then run with the env vars and a volume mounted at `/data`.
 
 Development: `npm test` (Vitest), `npm run typecheck`, `npm run dev` (runs from source with tsx).
