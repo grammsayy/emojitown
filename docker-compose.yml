@@ -1,0 +1,29 @@
+# Runs the bot around the clock, e.g. on a NAS (Synology Container Manager,
+# QNAP Container Station, Unraid, TrueNAS, Portainer) or any Docker host.
+#
+#   1. Put this folder on the NAS and create a .env file next to this one
+#      (copy .env.example and fill in DISCORD_TOKEN and DISCORD_CLIENT_ID).
+#   2. Start it:  docker compose up -d --build
+#
+# All progress lives in ./data/emojitown.db, which is kept across updates.
+services:
+  emojitown:
+    build: .
+    image: emojitown-bot
+    container_name: emojitown-bot
+    # Start with the NAS and come back after a crash. "docker compose stop" still stops it.
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Always use the mounted folder, whatever DATABASE_PATH says in .env.
+      DATABASE_PATH: /data/emojitown.db
+      TZ: UTC
+    volumes:
+      - ./data:/data
+    # Time to save and disconnect cleanly on stop or update.
+    stop_grace_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'

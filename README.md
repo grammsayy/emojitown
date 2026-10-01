@@ -44,7 +44,11 @@ built-in `node:sqlite`, so nothing needs compiling and no C++ build tools are re
 **Updating on Windows:** stop the bot (Ctrl+C in its window), then run `.\update.cmd` in the project folder. It pulls
 the latest version, reinstalls packages, rebuilds and starts the bot. Your `.env` and `data` folder are kept.
 
-Docker: `docker build -t emojitown-bot .` then run with the env vars and a volume mounted at `/data`.
+**Running 24/7 (NAS or any Docker host):** put the project folder on the machine, add your `.env` next to
+`docker-compose.yml`, and run `docker compose up -d --build` (or create a *Project* from that folder in Synology
+Container Manager / QNAP Container Station / Portainer). It restarts by itself after crashes and reboots, and keeps all
+progress in `./data`. To update: replace the files (keep `.env` and `data`) and run `docker compose up -d --build`
+again. Only ever run **one** copy of the bot per token.
 
 Development: `npm test` (Vitest), `npm run typecheck`, `npm run dev` (runs from source with tsx).
 
