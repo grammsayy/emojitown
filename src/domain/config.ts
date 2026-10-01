@@ -150,16 +150,16 @@ export function setStaffRole(ctx: Ctx, guildId: string, roleId: string, grant: b
   return info.changes > 0;
 }
 
-/** Setup items still missing, shown in /setup status. */
+/** Setup items still missing, shown in /settings. */
 export function missingSetup(ctx: Ctx, guildId: string): string[] {
   const cfg = getConfig(ctx, guildId);
   const missing: string[] = [];
-  if (!cfg.timezoneSet) missing.push('Timezone (`/setup server timezone:`)');
-  if (!cfg.supportDestination) missing.push('Support link (`/setup server support:`)');
-  if (!getChannel(ctx, guildId, 'logs')) missing.push('Log channel (`/setup server log_channel:`)');
-  if (getStaffRoles(ctx, guildId).length === 0) missing.push('Staff role (`/setup server staff_role:`)');
-  if (getChannels(ctx, guildId, 'snowball').length === 0) missing.push('Snowball channel (`/setup snowball channel:`)');
-  if (getChannels(ctx, guildId, 'halloween').length === 0) missing.push('Halloween channel (`/setup halloween channel:`)');
-  if (!getChannel(ctx, guildId, 'advent')) missing.push('Advent channel (`/setup advent channel:`)');
+  if (!cfg.timezoneSet) missing.push('Timezone (`/settings timezone:`)');
+  if (!cfg.supportDestination) missing.push('Support link (`/settings support:`)');
+  if (!getChannel(ctx, guildId, 'logs')) missing.push('Log channel (`/settings log_channel:`)');
+  if (getStaffRoles(ctx, guildId).length === 0) missing.push('Staff role (`/settings staff_role:`)');
+  if (getChannels(ctx, guildId, 'snowball').length === 0) missing.push('Snowball channel (`/season snowball channel:`)');
+  if (getChannels(ctx, guildId, 'halloween').length === 0) missing.push('Halloween channel (`/season halloween channel:`)');
+  if (!getChannel(ctx, guildId, 'advent')) missing.push('Advent channel (`/season advent channel:`)');
   return missing;
 }

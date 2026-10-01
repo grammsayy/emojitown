@@ -202,6 +202,7 @@ export class World {
     i.commandName = parts[0];
     const get = (n: string) => (n in opts ? opts[n] : null);
     i.options = {
+      data: Object.keys(opts).map((n) => ({ name: n, value: opts[n] })),
       getSubcommandGroup: () => (parts.length === 3 ? parts[1] : null),
       getSubcommand: () => (parts.length >= 2 ? parts[parts.length - 1] : null),
       getString: get,

@@ -254,7 +254,7 @@ export function scheduleEvent(ctx: Ctx, guildId: string, eventId: string, input:
       throw new UserError('This event is already running, so only its end date can change.');
     }
     if ((ev.state === 'active' || ev.state === 'paused') && localToMs(endLocal, tz) <= ctx.now()) {
-      throw new UserError('A running event needs an end date in the future. Use `/admin end` to end it now.');
+      throw new UserError('A running event needs an end date in the future. Use `/season end` to end it now.');
     }
 
     let claimDeadlineLocal: string | null = null;

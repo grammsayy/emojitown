@@ -376,12 +376,21 @@ export function visitorStatusText(bot: Bot, guildId: string): string {
 }
 
 /** Item names for autocomplete. */
-export function itemChoices(bot: Bot, guildId: string, query: string): { name: string; value: string }[] {
+/** Item suggestions. With `ownerId`, only items that member owns this season. */
+export function itemChoices(bot: Bot, guildId: string, query: string, ownerId?: string): { name: string; value: string }[] {
   const ev = getCurrentOrLatestEvent(bot.ctx, guildId, 'halloween');
   const pack = ev ? packFor(bot.ctx, ev) : getPack(bot.ctx, guildId, 'halloween');
   const q = query.toLowerCase();
+  const owned =
+    ownerId && ev
+      ? new Set(
+          (bot.ctx.db.prepare('SELECT item_id FROM hw_items WHERE guild_id = ? AND event_id = ? AND user_id = ?').all(guildId, ev.id, ownerId) as { item_id: string }[]).map(
+            (r) => r.item_id,
+          ),
+        )
+      : null;
   return pack.visitors
-    .flatMap((v) => v.items.map((it) => ({ name: truncate(`${it.name} (${it.rarity}, ${v.name})`, 100), value: it.id })))
+    .flatMap((v) => v.items.filter((it) => !owned || owned.has(it.id)).map((it) => ({ name: truncate(`${it.name} (${it.rarity}, ${v.name})`, 100), value: it.id })))
     .filter((c) => c.name.toLowerCase().includes(q) || c.value.includes(q))
     .slice(0, 25);
 }

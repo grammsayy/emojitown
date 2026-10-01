@@ -44,7 +44,7 @@ const errorStyle = (text: string): Payload => ({ embeds: [embed(COLORS.warn, und
 
 function eventFor(t: TestCtx, game: Feature): SeasonEvent {
   const ev = getTargetEvent(t.bot.ctx, t.i.guildId, game) ?? getCurrentOrLatestEvent(t.bot.ctx, t.i.guildId, game);
-  if (!ev) throw new UserError(`There is no ${game} season yet, so this message has nothing to show. Run \`/setup ${game}\` first.`);
+  if (!ev) throw new UserError(`There is no ${game} season yet, so this message has nothing to show. Run \`/season ${game}\` first.`);
   return ev;
 }
 
@@ -164,7 +164,7 @@ function adventDoor(t: TestCtx) {
   const doors = listDoors(t.bot.ctx, t.i.guildId, ev.id);
   const day = t.day ?? doors[0]?.day;
   const door = day ? getDoor(t.bot.ctx, t.i.guildId, ev.id, day) : null;
-  if (!door) throw new UserError(day ? `Door ${day} is empty. Write it with \`/setup door day:${day}\`.` : 'No doors are written yet. Start with `/setup door day:1`.');
+  if (!door) throw new UserError(day ? `Door ${day} is empty. Write it with \`/season door day:${day}\`.` : 'No doors are written yet. Start with `/season door day:1`.');
   const cfg = getConfig(t.bot.ctx, t.i.guildId);
   return { ev, door, doors, cfg, times: doorTimes(ev, cfg, door.day) };
 }
@@ -221,7 +221,7 @@ function disabled(components: readonly unknown[] | undefined): APIActionRowCompo
   });
 }
 
-/** `/admin message-test`: shows any member-facing message with real content. Nothing is saved. */
+/** `/game preview`: shows any member-facing message with real content. Nothing is saved. */
 export async function messageTest(bot: Bot, i: ChatInput) {
   const game = i.options.getString('game', true) as Feature;
   const which = i.options.getString('message', true);

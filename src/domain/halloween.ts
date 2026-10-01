@@ -570,3 +570,33 @@ export function correctCollection(
     return { ...found, champion };
   });
 }
+
+/**
+ * Staff wipe of Halloween collections for one season: one member's, or everyone's when
+ * `userId` is null. Candy already earned is kept. Recalculates the Champion.
+ */
+export function wipeCollections(ctx: Ctx, guildId: string, eventId: string, userId: string | null, reason: string, actorId: string) {
+  if (!reason.trim()) throw new UserError('A reason is required.');
+  return tx(ctx, () => {
+    const ev = requireEvent(ctx, guildId, eventId, 'halloween');
+    const who = userId === null ? '' : ' AND user_id = ?';
+    const args = userId === null ? [guildId, ev.id] : [guildId, ev.id, userId];
+    const before = ctx.db
+      .prepare(`SELECT COUNT(DISTINCT user_id) members, COUNT(*) items FROM hw_items WHERE guild_id = ? AND event_id = ?${who}`)
+      .get(...args) as { members: number; items: number };
+    if (before.items === 0) return { event: ev, members: 0, items: 0, champion: { championId: storedChampion(ctx, guildId, ev.id), changed: false } };
+    ctx.db.prepare(`DELETE FROM hw_items WHERE guild_id = ? AND event_id = ?${who}`).run(...args);
+    const champion = refreshChampion(ctx, ev);
+    audit(ctx, {
+      guildId,
+      actorId,
+      action: userId === null ? 'halloween.collection.wipe-all' : 'halloween.collection.wipe',
+      eventId: ev.id,
+      targetId: userId,
+      before,
+      after: { members: 0, items: 0, champion: champion.championId },
+      reason,
+    });
+    return { event: ev, members: before.members, items: before.items, champion };
+  });
+}

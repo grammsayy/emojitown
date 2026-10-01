@@ -30,7 +30,7 @@ describe('/visitor export and import', () => {
 
   it('mass-edits commons, and uncommon + rare, via a spreadsheet', async () => {
     const w = new World('2026-10-05T12:00:00Z');
-    await w.command('owner', 'setup halloween', { channel: 'spooky' });
+    await w.command('owner', 'season halloween', { channel: 'spooky' });
 
     const commons = await download(w, 'common');
     expect(text(commons.reply)).toContain('40 common items');

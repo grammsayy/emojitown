@@ -181,7 +181,7 @@ function listView(bot: Bot, guildId: string, page: number) {
   const p = paginate(active, page, 20);
   const lines = p.items.map((v) => `${CLASS_LABEL[visitorClass(v)].split(' ')[0]} **${v.name}**${v.image ? ' 🖼️' : ''}${isPlaceholder(v) ? ' *(placeholder)*' : ''}`);
   const e = embed(COLORS.halloween, `👻 Visitors (${active.length})`, lines.join('\n') || 'No visitors. Add one with `/visitor add`.').addFields(
-    field('Classes (`/setup class` to change)', summary),
+    field('Classes (`/visitor class` to change)', summary),
   );
   return { embeds: [e], components: p.pages > 1 ? [pager(p, (n) => cid('vlist', n))] : [] };
 }
@@ -276,7 +276,7 @@ export const visitorHandlers: HandlerSet = {
     'visitor edit': edit,
     'visitor remove': remove,
     'visitor list': (bot, i) => reply(i, listView(bot, i.guildId, 1)),
-    'setup class': setupClass,
+    'visitor class': setupClass,
     'visitor export': exportItems,
     'visitor import': importItems,
   },

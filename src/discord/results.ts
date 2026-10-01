@@ -31,7 +31,7 @@ export function resultsEmbed(bot: Bot, ev: SeasonEvent) {
   }
   const candy = candyLeaderboard(bot.ctx, ev.guildId, ev.id, 1);
   if (candy.total) e.addFields(field('🍬 Most candy this event', candy.items.slice(0, 5).map((r) => `${rankLabel(r.rank)} <@${r.row.userId}> · ${r.row.amount}`).join('\n')));
-  e.addFields(field('Archive', `Results stay viewable with \`event:${ev.id}\` on the leaderboard and stats commands.`));
+  e.addFields(field('Archive', `Results stay viewable with \`season:${ev.id}\` on \`/leaderboard\`, \`/inventory\` and \`/stats\`.`));
   return e;
 }
 

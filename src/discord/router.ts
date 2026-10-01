@@ -47,7 +47,8 @@ async function autocomplete(bot: Bot, i: AutocompleteInteraction<'cached'>): Pro
   } else if (focused.name === 'message') {
     choices = messageChoices(i.options.getString('game'), q);
   } else if (focused.name === 'item') {
-    choices = itemChoices(bot, i.guildId, q);
+    const owner = i.options.getSubcommand(false) === 'remove-item' ? i.options.get('member')?.value : undefined;
+    choices = itemChoices(bot, i.guildId, q, typeof owner === 'string' ? owner : undefined);
   } else if (focused.name === 'visitor' && i.commandName === 'visitor') {
     choices = visitorAdminChoices(bot, i.guildId, q, i.options.getSubcommand(false) === 'remove');
   } else if (focused.name === 'visitor') {
@@ -147,7 +148,7 @@ async function confirm(bot: Bot, i: Button, accepted: boolean, token: string): P
     await i.editReply(typeof result === 'string' ? { content: result, embeds: [], components: [] } : { content: '', embeds: [result], components: [] });
   } catch (err) {
     if (!(err instanceof UserError)) console.error(`confirmed action ${kind} failed`, err);
-    const message = err instanceof UserError ? err.message : 'Something went wrong on our side. Please check `/admin audit` before retrying.';
+    const message = err instanceof UserError ? err.message : 'Something went wrong on our side. Please check `/player history` before retrying.';
     await i.editReply({ content: '', embeds: [embed(COLORS.warn, 'Not saved', message)], components: [] });
   }
 }

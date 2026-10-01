@@ -2,7 +2,20 @@ import { getConfig } from '../../domain/config.js';
 import { COLLECT_COOLDOWN_MS, WARMUP_MS } from '../../domain/snowball.js';
 import { formatSeconds } from '../../util/time.js';
 import { reply, type HandlerSet } from '../interaction.js';
+import { isAdmin, isModerator } from '../runtime.js';
 import { COLORS, embed, field } from '../ui.js';
+
+/** Staff commands, shown in /help only to people who can use them. */
+const ADMIN_HELP = [
+  '`/settings` Server settings. Run it with no options for the setup checklist',
+  '`/season` Set up, start, end and announce games; write Advent doors; content files; wipe all items; export data',
+  '`/visitor` Create and edit Halloween visitors and their classes; mass-edit items with a spreadsheet',
+  '`/adjust` Give or take candy, undo a candy transaction, correct snowball stats',
+].join('\n');
+const STAFF_HELP = [
+  '`/game` Pause or resume a game, preview any message, send a visitor away, fix the Champion role, repost a door',
+  "`/player` A member's history; give, remove or wipe their items; clear a snowball warm-up; exclude or include",
+].join('\n');
 
 export const helpHandlers: HandlerSet = {
   chat: {
@@ -67,6 +80,10 @@ export const helpHandlers: HandlerSet = {
           ],
         });
       }
+      const staffFields = [
+        ...(isAdmin(i.member) ? [field('🛠️ Admin commands (only you and other admins see this)', ADMIN_HELP)] : []),
+        ...(isModerator(bot, i.member) ? [field('🧰 Event staff commands', STAFF_HELP)] : []),
+      ];
       return reply(i, {
         embeds: [
           embed(COLORS.brand, '✨ emojitown games', 'Use `/help game:` for details on one game.').addFields(
@@ -76,6 +93,7 @@ export const helpHandlers: HandlerSet = {
             field('🍬 Candy', '`/candy`'),
             field('For everything', "`/leaderboard` · `/events` (what's running)"),
             support,
+            ...staffFields,
           ),
         ],
       });

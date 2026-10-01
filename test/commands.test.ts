@@ -45,12 +45,15 @@ describe('slash commands', () => {
   it('locks staff commands on Discord and leaves member commands open', () => {
     const manageGuild = PermissionFlagsBits.ManageGuild.toString();
     for (const c of json) {
-      if (['setup', 'admin', 'mod', 'visitor'].includes(c.name)) expect(c.default_member_permissions, c.name).toBe(manageGuild);
+      if (['settings', 'season', 'visitor', 'adjust', 'game', 'player'].includes(c.name)) expect(c.default_member_permissions, c.name).toBe(manageGuild);
       else expect(c.default_member_permissions ?? null, c.name).toBeNull();
     }
-    expect(levelFor('setup halloween')).toBe('admin');
-    expect(levelFor('admin end')).toBe('admin');
-    expect(levelFor('mod pause')).toBe('moderator');
+    expect(levelFor('season halloween')).toBe('admin');
+    expect(levelFor('season end')).toBe('admin');
+    expect(levelFor('settings')).toBe('admin');
+    expect(levelFor('adjust candy')).toBe('admin');
+    expect(levelFor('game pause')).toBe('moderator');
+    expect(levelFor('player wipe-items')).toBe('moderator');
   });
 
   it('keeps commands flat: no subcommand groups anywhere', () => {

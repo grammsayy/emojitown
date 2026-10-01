@@ -1,7 +1,6 @@
 import { AttachmentBuilder, type Guild } from 'discord.js';
 import { listDoors } from '../../domain/advent.js';
 import { listAudit } from '../../domain/audit.js';
-import { history } from '../../domain/candy.js';
 import { storedChampion } from '../../domain/champion.js';
 import { getConfig } from '../../domain/config.js';
 import { parsePackJson } from '../../domain/content.js';
@@ -42,7 +41,7 @@ export function stateLabel(ev: SeasonEvent): string {
 /** The event a staff command about `game` acts on: the running one, else the upcoming one. */
 export function requireTargetEvent(bot: Bot, guildId: string, game: Feature): SeasonEvent {
   const ev = getTargetEvent(bot.ctx, guildId, game);
-  if (!ev) throw new UserError(`${FEATURE_LABEL[game]} isn't set up yet. Run \`/setup ${game}\` first.`);
+  if (!ev) throw new UserError(`${FEATURE_LABEL[game]} isn't set up yet. Run \`/season ${game}\` first.`);
   return ev;
 }
 
@@ -132,23 +131,13 @@ export function exportFile(bot: Bot, guildId: string, ev: SeasonEvent): Attachme
   return new AttachmentBuilder(Buffer.from(JSON.stringify(data, null, 2)), { name: `${ev.id}-export.json` });
 }
 
-export function auditEmbed(bot: Bot, guildId: string, member: { id: string; displayName: string } | null) {
-  const entries = listAudit(bot.ctx, guildId, { memberId: member?.id, limit: 15 });
+export function auditEmbed(bot: Bot, guildId: string, memberId: string | null) {
+  const entries = listAudit(bot.ctx, guildId, { memberId: memberId ?? undefined, limit: 15 });
   const lines = entries.map(
     (a) =>
       `\`#${a.id}\` <t:${Math.floor(a.createdAt / 1000)}:g> **${a.action}** by ${a.actorId === 'system' ? 'the bot' : `<@${a.actorId}>`}${a.targetId ? ` → <@${a.targetId}>` : ''}${a.reason ? ` · ${truncate(a.reason, 60)}` : ''}`,
   );
-  const e = embed(COLORS.staff, '📋 Staff log', lines.join('\n') || 'No staff actions yet.');
-  if (member) {
-    const h = history(bot.ctx, guildId, member.id, 1);
-    e.addFields(
-      field(
-        `Recent candy for ${member.displayName}`,
-        h.items.map((t) => `\`#${t.id}\` ${t.amount > 0 ? '+' : ''}${t.amount} ${t.source} → ${t.balanceAfter}`).join('\n') || 'None',
-      ),
-    );
-  }
-  return e;
+  return embed(COLORS.staff, memberId ? '📋 Staff actions involving this member' : '📋 Staff log', lines.join('\n') || 'No staff actions yet.');
 }
 
 const ATTACHMENT_HOSTS = ['cdn.discordapp.com', 'media.discordapp.net'];
