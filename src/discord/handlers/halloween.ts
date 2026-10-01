@@ -1,4 +1,4 @@
-import { CLASS_LABEL, getClasses } from '../../domain/classes.js';
+import { CLASS_LABEL, DUPLICATE_NOTE, getClasses } from '../../domain/classes.js';
 import { resolveImage } from '../images.js';
 import { discordTime, formatSeconds } from '../../util/time.js';
 import { ButtonStyle, type AttachmentBuilder, type Guild, type MessageEditOptions, type Role, type User } from 'discord.js';
@@ -35,6 +35,7 @@ import { assertSafeChampionRole, fetchTextChannel, syncChampionRole, type Bot } 
 import { button, cid, COLORS, embed, field, mention, pager, rankLabel, row, truncate, when } from '../ui.js';
 
 export const RARITY_LABEL: Record<Rarity, string> = CLASS_LABEL;
+const RARITY_COLOR: Record<Rarity, number> = { common: 0x9e9e9e, uncommon: 0x4caf50, rare: 0x9c27b0, legendary: 0xffc107 };
 
 /** The public visitor message, for both the open and the closed state. Stored pictures are attached as files. */
 export function visitorMessage(bot: Bot, guildId: string, pack: HalloweenPack, enc: Encounter): MessageEditOptions & { files: AttachmentBuilder[] } {
@@ -55,13 +56,20 @@ export function visitorMessage(bot: Bot, guildId: string, pack: HalloweenPack, e
   if (open) {
     e.addFields(field('Leaves', when(enc.expiresAt)));
   } else if (enc.status === 'won' && enc.itemId) {
+    // Win card: custom text up top, the item's picture large, the rarity line below.
     const item = visitor.items.find((i) => i.id === enc.itemId)!;
-    const tpl = enc.duplicate ? pack.messages.duplicate : pack.messages.win;
-    e.setTitle(`${visitor.name} got their ${enc.request}!`)
-      .setDescription(fill(tpl, { winner: `<@${enc.winnerId}>`, name: visitor.name, item: item.name, rarity: RARITY_LABEL[item.rarity] }))
-      .addFields(field('Reward', `${item.name} · ${RARITY_LABEL[item.rarity]}${enc.candyAwarded ? ` · 🍬 ${enc.candyAwarded} candy` : ''}`));
-    const big = show(item.image);
-    if (big && item.image !== visitor.image) e.setImage(big);
+    const cls = getClasses(bot.ctx, guildId)[item.rarity];
+    const tpl = visitor.winText ?? (enc.duplicate ? pack.messages.duplicate : pack.messages.win);
+    const vars = { winner: `<@${enc.winnerId}>`, name: visitor.name, item: item.name, rarity: RARITY_LABEL[item.rarity], request: enc.request };
+    e.setTitle(pack.messages.winTitle ?? 'Happy Halloween!')
+      .setDescription(fill(tpl, vars))
+      .setColor(RARITY_COLOR[item.rarity])
+      .setAuthor({ name: `${visitor.name} · ${RARITY_LABEL[visitorClass(visitor)]} visitor` })
+      .setThumbnail(null);
+    const big = show(item.image ?? visitor.image);
+    if (big) e.setImage(big);
+    const candy = enc.candyAwarded ? `\n🍬 +${enc.candyAwarded} candy` : '';
+    e.setFooter({ text: `${enc.duplicate ? DUPLICATE_NOTE : cls.description}${candy}` });
   } else {
     e.setTitle(`${visitor.name} has left`).setDescription(
       fill(enc.status === 'expired' ? pack.messages.expired : pack.messages.cancelled, { name: visitor.name }),

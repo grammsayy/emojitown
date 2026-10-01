@@ -167,7 +167,8 @@ const setupCommand = command('setup', 'Set up the emojitown games (admins)')
       .setDescription('Halloween visitor classes: how often each appears and its bonus candy')
       .addStringOption((o) => o.setName('class').setDescription('Which class').setRequired(true).addChoices(...CLASS_CHOICES))
       .addIntegerOption((o) => o.setName('chance').setDescription('Relative chance to appear, e.g. 60 (0 = never)').setMinValue(0).setMaxValue(1000))
-      .addIntegerOption((o) => o.setName('bonus_candy').setDescription('Extra candy for winning this class of visitor').setMinValue(0).setMaxValue(10000)),
+      .addIntegerOption((o) => o.setName('bonus_candy').setDescription('Extra candy for winning this class of visitor').setMinValue(0).setMaxValue(10000))
+      .addStringOption((o) => o.setName('rarity_text').setDescription('Line under the item picture, e.g. "This item is rare! …"').setMaxLength(200)),
   )
   .addSubcommand((s) => s.setName('status').setDescription('Checklist: what is set up, what is live, what is missing'));
 
@@ -181,7 +182,8 @@ const visitorCommand = command('visitor', 'Create and edit Halloween visitors (a
       .setDescription('Create a visitor (a form asks for its name and texts)')
       .addStringOption((o) => o.setName('class').setDescription('Common, Uncommon, Rare or Legendary').setRequired(true).addChoices(...CLASS_CHOICES))
       .addAttachmentOption((o) => o.setName('picture').setDescription('The visitor\'s picture (PNG, JPG, GIF or WEBP)'))
-      .addStringOption((o) => o.setName('picture_url').setDescription('…or a link to a picture').setMaxLength(500)),
+      .addStringOption((o) => o.setName('picture_url').setDescription('…or a link to a picture').setMaxLength(500))
+      .addStringOption((o) => o.setName('win_text').setDescription('Win message text. Use {winner}, {item}, {name}, {request}').setMaxLength(300)),
   )
   .addSubcommand((s) =>
     s
@@ -191,7 +193,8 @@ const visitorCommand = command('visitor', 'Create and edit Halloween visitors (a
       .addStringOption((o) => o.setName('class').setDescription('New class').addChoices(...CLASS_CHOICES))
       .addAttachmentOption((o) => o.setName('picture').setDescription('New picture'))
       .addStringOption((o) => o.setName('picture_url').setDescription('…or a link to a new picture').setMaxLength(500))
-      .addBooleanOption((o) => o.setName('remove_picture').setDescription('Remove the picture')),
+      .addBooleanOption((o) => o.setName('remove_picture').setDescription('Remove the picture'))
+      .addStringOption((o) => o.setName('win_text').setDescription('Win message text. Use {winner}, {item}, {name}, {request}').setMaxLength(300)),
   )
   .addSubcommand((s) =>
     s

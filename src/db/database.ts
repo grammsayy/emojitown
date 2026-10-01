@@ -379,6 +379,9 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (guild_id, id)
   );
   `,
+  `
+  ALTER TABLE hw_classes ADD COLUMN description TEXT;
+  `,
 ];
 
 export function migrate(db: DB): void {

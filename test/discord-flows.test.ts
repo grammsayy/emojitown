@@ -126,7 +126,12 @@ describe('Halloween, set up with one command', () => {
     const enc = post.message;
     w.ctx.rolls = [0.99, 0];
     expect(text(await w.button('alice', findCustomId(post.payload, 'hw|trick|')!, enc))).toContain('+5 candy');
-    expect(JSON.stringify(enc.payload)).toContain('got their trick');
+    const card = JSON.stringify(enc.payload);
+    expect(card).toContain('Happy Halloween!');
+    expect(card).toContain('As a thank you for the trick');
+    expect(card).toContain('<@alice>');
+    expect(card).toContain('It has been added to your inventory.');
+    expect(card).toContain('+5 candy');
     expect(w.members.get('alice')!.roles.cache.has('champ')).toBe(true);
 
     // Member views.
@@ -380,7 +385,8 @@ describe('custom Halloween visitors and classes', () => {
     vi.stubGlobal('fetch', async () => new Response(PNG, { headers: { 'content-type': 'image/png' } }));
     const w = new World('2026-10-05T12:00:00Z');
 
-    const added = await addVisitor(w, 'rare', { name: 'Ghosty', greeting: 'Boo! Ghosty floats in.', trick: '{name} wants a spooky TRICK!', item: 'Ghost Pin' }, true);
+    const calls = await w.command('owner', 'visitor add', { class: 'rare', picture, win_text: 'Ghosty swirls happily and gives {winner} one **{item}**!' });
+    const added = await w.modal('owner', calls[0]!.payload.custom_id, { name: 'Ghosty', greeting: 'Boo! Ghosty floats in.', trick: '{name} wants a spooky TRICK!', item: 'Ghost Pin' });
     const t = text(added);
     expect(t).toContain('**Visitor:** none → Ghosty');
     expect(t).toContain('**Class:** 🟣 Rare (+5 bonus candy)');
@@ -408,6 +414,10 @@ describe('custom Halloween visitors and classes', () => {
 
     const win = await w.button('alice', findCustomId(post.payload, 'hw|trick|')!, post.message);
     expect(text(win)).toContain('+10 candy (includes +5 🟣 Rare bonus)');
+    const card = JSON.stringify(post.message.payload);
+    expect(card).toContain('Ghosty swirls happily and gives <@alice> one **Ghost Pin**!');
+    expect(card).toContain('This item is rare! Hold on to it tight.');
+    expect(card).toContain('"image":{"url":"attachment://');
     expect(getBalance(w.ctx, 'g1', 'alice')).toBe(10);
     expect(text(await w.command('alice', 'inventory'))).toContain('Ghost Pin');
 
@@ -418,6 +428,7 @@ describe('custom Halloween visitors and classes', () => {
     );
     expect(text(await w.command('owner', 'setup class', { class: 'legendary', chance: 5, bonus_candy: 25 }))).toContain('+10 → +25');
     expect(text(await w.command('owner', 'setup class', { class: 'legendary', chance: 5, bonus_candy: 25 }))).toContain('Nothing changed');
+    expect(text(await w.command('owner', 'setup class', { class: 'legendary', rarity_text: 'WOW. A legendary find!' }))).toContain('Legendary rarity text:');
 
     // Removing the last visitor is refused; with a second one, Ghosty is retired (Alice keeps her pin).
     expect(text(await w.command('owner', 'visitor remove', { visitor: 'ghosty' }))).toContain('leave no visitors');

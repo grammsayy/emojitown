@@ -50,6 +50,7 @@ export interface VisitorInput {
   greeting?: string | null;
   trickRequest?: string | null;
   treatRequest?: string | null;
+  winText?: string | null;
   itemName?: string | null;
 }
 
@@ -83,6 +84,7 @@ export function addVisitor(ctx: Ctx, guildId: string, input: VisitorInput, actor
     greeting: clean(input.greeting),
     trickRequest: clean(input.trickRequest),
     treatRequest: clean(input.treatRequest),
+    winText: clean(input.winText),
     items: [
       {
         id: `${id}.keepsake`,
@@ -119,6 +121,7 @@ export function editVisitor(
   if (patch.greeting !== undefined) v.greeting = clean(patch.greeting);
   if (patch.trickRequest !== undefined) v.trickRequest = clean(patch.trickRequest);
   if (patch.treatRequest !== undefined) v.treatRequest = clean(patch.treatRequest);
+  if (patch.winText !== undefined) v.winText = clean(patch.winText);
   // Visitors created with /visitor add have one keepsake that follows the visitor's name, class and picture.
   if (v.items.length === 1) {
     const item = v.items[0]!;

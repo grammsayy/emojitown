@@ -30,6 +30,7 @@ interface FormPayload {
   picture?: { url: string; size: number };
   pictureUrl?: string;
   removePicture?: boolean;
+  winText?: string;
 }
 
 function classLine(bot: Bot, guildId: string, cls: Rarity): string {
@@ -70,7 +71,7 @@ async function showForm(bot: Bot, i: ChatInput, payload: FormPayload, existing?:
 
 async function add(bot: Bot, i: ChatInput) {
   const rarity = i.options.getString('class', true) as Rarity;
-  await showForm(bot, i, { mode: 'add', rarity, ...pictureOptions(i) });
+  await showForm(bot, i, { mode: 'add', rarity, ...pictureOptions(i), winText: i.options.getString('win_text') ?? undefined });
 }
 
 async function edit(bot: Bot, i: ChatInput) {
@@ -78,7 +79,12 @@ async function edit(bot: Bot, i: ChatInput) {
   const pics = pictureOptions(i);
   const removePicture = i.options.getBoolean('remove_picture') ?? false;
   if (removePicture && (pics.picture || pics.pictureUrl)) throw new UserError('Either give a new picture or remove it, not both.');
-  await showForm(bot, i, { mode: 'edit', visitorId: v.id, rarity: (i.options.getString('class') as Rarity | null) ?? undefined, ...pics, removePicture }, v);
+  await showForm(
+    bot,
+    i,
+    { mode: 'edit', visitorId: v.id, rarity: (i.options.getString('class') as Rarity | null) ?? undefined, ...pics, removePicture, winText: i.options.getString('win_text') ?? undefined },
+    v,
+  );
 }
 
 function textChange(label: string, a: string | undefined, b: string | undefined): string | null {
@@ -111,6 +117,7 @@ async function submitForm(bot: Bot, i: Component, [token]: string[]) {
     trickRequest: f('trick') ?? null,
     treatRequest: f('treat') ?? null,
     itemName: f('item') ?? null,
+    ...(payload.winText !== undefined ? { winText: payload.winText } : {}),
   };
   const changes: string[] = [];
   let visitor: HalloweenVisitor;
@@ -118,6 +125,7 @@ async function submitForm(bot: Bot, i: Component, [token]: string[]) {
     visitor = addVisitor(bot.ctx, m.guildId, { ...(fields as VisitorInput), rarity: payload.rarity!, image }, m.user.id);
     changes.push(`**Visitor:** none → ${visitor.name}`, `**Class:** ${classLine(bot, m.guildId, payload.rarity!)}`);
     changes.push(`**Picture:** ${visitor.image ? 'added' : 'none (text only)'}`, `**Collectible:** ${visitor.items[0]!.name}`);
+    if (visitor.winText) changes.push('**Win text:** custom');
   } else {
     const { before, after } = editVisitor(bot.ctx, m.guildId, payload.visitorId!, { ...fields, rarity: payload.rarity, image }, m.user.id);
     visitor = after;
@@ -128,6 +136,7 @@ async function submitForm(bot: Bot, i: Component, [token]: string[]) {
       textChange('Greeting', before.greeting, after.greeting),
       textChange('Trick text', before.trickRequest, after.trickRequest),
       textChange('Treat text', before.treatRequest, after.treatRequest),
+      textChange('Win text', before.winText, after.winText),
     ])
       if (c) changes.push(c);
     if (before.items.length === 1 && before.items[0]!.name !== after.items[0]!.name) changes.push(`**Collectible:** ${before.items[0]!.name} → ${after.items[0]!.name}`);
@@ -178,9 +187,11 @@ async function setupClass(bot: Bot, i: ChatInput) {
   const cls = i.options.getString('class', true) as Rarity;
   const chance = i.options.getInteger('chance');
   const bonus = i.options.getInteger('bonus_candy');
+  const text = i.options.getString('rarity_text');
   const changes: string[] = [];
   tx(bot.ctx, () => {
-    const { before, after } = setClass(bot.ctx, i.guildId, cls, { weight: chance ?? undefined, bonusCandy: bonus ?? undefined });
+    const { before, after } = setClass(bot.ctx, i.guildId, cls, { weight: chance ?? undefined, bonusCandy: bonus ?? undefined, description: text ?? undefined });
+    if (before.description !== after.description) changes.push(`**${CLASS_LABEL[cls]} rarity text:** "${before.description}" → "${after.description}"`);
     if (before.weight !== after.weight) changes.push(`**${CLASS_LABEL[cls]} chance:** ${before.weight} → ${after.weight}`);
     if (before.bonusCandy !== after.bonusCandy) changes.push(`**${CLASS_LABEL[cls]} bonus candy:** +${before.bonusCandy} → +${after.bonusCandy}`);
     if (changes.length) audit(bot.ctx, { guildId: i.guildId, actorId: i.user.id, action: 'setup.class', before: { [cls]: before }, after: { [cls]: after } });

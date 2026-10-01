@@ -70,8 +70,9 @@ export const DEFAULT_HALLOWEEN_PACK: HalloweenPack = {
   messages: {
     trickRequest: '**{name}** is visiting emojitown and wants a **TRICK**! Press **Trick** or use `/trick`.',
     treatRequest: '**{name}** is visiting emojitown and wants a **TREAT**! Press **Treat** or use `/treat`.',
-    win: '{winner} gave {name} exactly what they wanted and received **{item}** ({rarity})!',
-    duplicate: '{winner} gave {name} exactly what they wanted and received **{item}** ({rarity}). Already collected!',
+    winTitle: 'Happy Halloween!',
+    win: 'As a thank you for the {request}, {name} gives {winner} one **{item}**.',
+    duplicate: 'As a thank you for the {request}, {name} gives {winner} one **{item}**.',
     wrong: "That's not what {name} asked for. You've used your attempt for this visitor, but others can still try.",
     expired: '{name} wandered off into the night. Nobody answered in time.',
     cancelled: '{name} was called away by the emojitown staff.',

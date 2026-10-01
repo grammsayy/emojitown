@@ -30,6 +30,8 @@ export interface HalloweenVisitor {
   image?: string;
   /** Shown when the visitor arrives, above the trick/treat request. */
   greeting?: string;
+  /** Text on the win message, e.g. "As a thank you, they give {winner} one **{item}**". Uses the pack default when empty. */
+  winText?: string;
   /** Retired visitors no longer appear; items already collected from them are kept. */
   retired?: boolean;
   /** What the visitor says when asking for a trick. Placeholders: {name}. */
@@ -43,6 +45,8 @@ export interface HalloweenPack {
   messages: {
     trickRequest: string;
     treatRequest: string;
+    /** Title of the win message. Default: "Happy Halloween!" */
+    winTitle?: string;
     win: string;
     duplicate: string;
     wrong: string;
