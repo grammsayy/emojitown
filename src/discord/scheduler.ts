@@ -2,7 +2,7 @@ import type { Guild } from 'discord.js';
 import { dueAnnouncements, getDoor, markPosted, doorTimes } from '../domain/advent.js';
 import { getRoleState } from '../domain/champion.js';
 import { getChannel, getChannels, getConfig } from '../domain/config.js';
-import { FEATURE_LABEL, getCurrentEvent, type Feature } from '../domain/events.js';
+import { FEATURE_LABEL, getCurrentEvent, SETUP_ACTION, type Feature } from '../domain/events.js';
 import { abortEncounter, attachMessage, packFor, tickHalloween, unsyncedEncounters } from '../domain/halloween.js';
 import { pauseEvent, pendingResults, SYSTEM_ACTOR, tickEvents } from '../domain/lifecycle.js';
 import { announcementMessage, recoveryMessage } from './handlers/advent.js';
@@ -33,7 +33,7 @@ async function pauseForMissingChannel(bot: Bot, guild: Guild, feature: Feature, 
     bot,
     guild.id,
     `${FEATURE_LABEL[feature]} paused`,
-    `The bot can't use <#${channelId}>, so **${ev.name}** was paused. Fix the channel or its permissions (or pick a new one with \`/season ${feature} channel:\`), then run \`/game resume game:${feature}\`.`,
+    `The bot can't use <#${channelId}>, so **${ev.name}** was paused. Fix the channel or its permissions (or pick a new one with \`/season\` → **${SETUP_ACTION[feature]}**), then run \`/season\` → **Resume a paused game**.`,
   );
 }
 

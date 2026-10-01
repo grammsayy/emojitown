@@ -10,10 +10,10 @@ import { findCustomId, text, World } from './fake-discord.js';
 
 async function serverSetup(w: World) {
   w.role('staff');
-  const r = await w.command('owner', 'settings', { timezone: 'Europe/Berlin', staff_role: 'staff', log_channel: 'logs', support: '#help' });
+  const r = await w.staff('owner', 'settings', { timezone: 'Europe/Berlin', staff_role: 'staff', log_channel: 'logs', support: '#help' });
   expect(text(r)).toContain('What changed');
   expect(text(r)).toContain('**Timezone:** Europe/Copenhagen → Europe/Berlin');
-  expect(text(r)).toContain('**Staff roles:** added <@&staff>');
+  expect(text(r)).toContain('**Staff roles:** none → <@&staff>');
   return r;
 }
 
@@ -63,16 +63,16 @@ describe('permissions', () => {
   it('members cannot use staff commands; event staff can use /game and /player but not admin commands', async () => {
     const w = new World('2026-10-05T12:00:00Z');
     await serverSetup(w);
-    expect(text(await w.command('alice', 'season halloween', { channel: 'spooky' }))).toContain('Only server administrators');
-    expect(text(await w.command('alice', 'game pause', { game: 'halloween', reason: 'x' }))).toContain('Only event staff');
+    expect(text(await w.staff('alice', 'season halloween', { channel: 'spooky' }))).toContain('Only server administrators');
+    expect(text(await w.staff('alice', 'game pause', { game: 'halloween', reason: 'x' }))).toContain('Only event staff');
     w.members.get('mod')!.roles.cache.set('staff', true);
-    expect(text(await w.command('mod', 'player history', { member: 'bob' }))).toContain('Candy history');
-    expect(text(await w.command('mod', 'adjust candy', { member: 'bob', amount: 5, reason: 'y' }))).toContain('Only server administrators');
+    expect(text(await w.staff('mod', 'player history', { member: 'bob' }))).toContain('Candy history');
+    expect(text(await w.staff('mod', 'adjust candy', { member: 'bob', amount: 5, reason: 'y' }))).toContain('Only server administrators');
   });
 
   it('confirmations: only the requester can confirm or cancel; the result says what changed', async () => {
     const w = new World('2026-12-05T12:00:00Z');
-    const calls = await w.command('owner', 'adjust candy', { member: 'bob', amount: 5, reason: 'trivia winner' });
+    const calls = await w.staff('owner', 'adjust candy', { member: 'bob', amount: 5, reason: 'trivia winner' });
     expect(text(calls)).toContain('0 → 5');
     const token = findCustomId(calls.at(-1)!.payload, 'cf|')!;
     const cancel = findCustomId(calls.at(-1)!.payload, 'cx|')!;
@@ -87,12 +87,12 @@ describe('/setup server', () => {
   it('reports exactly what changed, and "Nothing changed" on a repeat', async () => {
     const w = new World('2026-10-05T12:00:00Z');
     await serverSetup(w);
-    const again = await w.command('owner', 'settings', { timezone: 'Europe/Berlin', staff_role: 'staff', log_channel: 'logs' });
+    const again = await w.staff('owner', 'settings', { timezone: 'Europe/Berlin', staff_role: 'staff', log_channel: 'logs' });
     expect(text(again)).toContain('Nothing changed');
-    const tz = await w.command('owner', 'settings', { timezone: 'America/New_York' });
+    const tz = await w.staff('owner', 'settings', { timezone: 'America/New_York' });
     expect(text(tz)).toContain('**Timezone:** Europe/Berlin → America/New_York');
     w.role('g1');
-    expect(text(await w.command('owner', 'settings', { staff_role: 'g1' }))).toContain('every member staff access');
+    expect(text(await w.staff('owner', 'settings', { staff_role: 'g1' }))).toContain('every member staff access');
   });
 });
 
@@ -101,7 +101,7 @@ describe('Halloween, set up with one command', () => {
     const w = new World('2026-10-05T12:00:00Z');
     await serverSetup(w);
     w.role('champ');
-    const setup = await w.command('owner', 'season halloween', { channel: 'spooky', champion_role: 'champ', wait_min: '30s', wait_max: '1m', visit_length: '2m' });
+    const setup = await w.staff('owner', 'season halloween', { channel: 'spooky', champion_role: 'champ', wait_min: '30s', wait_max: '1m', visit_length: '2m' });
     const t = text(setup);
     expect(t).toContain('**Season:** none → Halloween 2026');
     expect(t).toContain('**Channels:** none → <#spooky>');
@@ -113,7 +113,7 @@ describe('Halloween, set up with one command', () => {
     expect(getCurrentEvent(w.ctx, 'g1', 'halloween')!.state).toBe('active');
 
     // Same command again: nothing changes.
-    expect(text(await w.command('owner', 'season halloween', { channel: 'spooky', wait_min: '30s' }))).toContain('Nothing changed');
+    expect(text(await w.staff('owner', 'season halloween', { channel: 'spooky', wait_min: '30s' }))).toContain('Nothing changed');
 
     // A visitor appears within the 30s–1m window once someone has chatted.
     recordActivity(w.ctx, 'g1', 'spooky');
@@ -144,17 +144,17 @@ describe('Halloween, set up with one command', () => {
     expect(text(await w.command('bob', 'events'))).toContain('live now');
 
     // Staff actions say what changed.
-    expect(text(await w.command('owner', 'game preview', { game: 'halloween', message: 'all' }))).toContain('Test 1/13');
-    expect(text(await w.command('owner', 'game pause', { game: 'halloween', reason: 'break' }))).toContain('🟢 live → ⏸️ paused');
-    expect(text(await w.command('owner', 'game pause', { game: 'halloween', reason: 'break' }))).toContain('already paused. Nothing changed');
-    expect(text(await w.command('owner', 'game resume', { game: 'halloween' }))).toContain('⏸️ paused → 🟢 live');
-    expect(text(await w.command('owner', 'player exclude', { member: 'bob', game: 'all', reason: 'test' }))).toContain('playing → excluded');
-    expect(text(await w.command('owner', 'player include', { member: 'bob', game: 'all', reason: 'test' }))).toContain('excluded → playing');
-    expect(text(await w.command('owner', 'player give-item', { member: 'bob', item: 'pumpkin-pete.golden-gourd', reason: 'bug' }))).toContain(
+    expect(text(await w.staff('owner', 'game preview', { game: 'halloween', message: 'all' }))).toContain('Test 1/13');
+    expect(text(await w.staff('owner', 'game pause', { game: 'halloween', reason: 'break' }))).toContain('🟢 live → ⏸️ paused');
+    expect(text(await w.staff('owner', 'game pause', { game: 'halloween', reason: 'break' }))).toContain('already paused. Nothing changed');
+    expect(text(await w.staff('owner', 'game resume', { game: 'halloween' }))).toContain('⏸️ paused → 🟢 live');
+    expect(text(await w.staff('owner', 'player exclude', { member: 'bob', game: 'all', reason: 'test' }))).toContain('playing → excluded');
+    expect(text(await w.staff('owner', 'player include', { member: 'bob', game: 'all', reason: 'test' }))).toContain('excluded → playing');
+    expect(text(await w.staff('owner', 'player give-item', { member: 'bob', item: 'pumpkin-pete.golden-gourd', reason: 'bug' }))).toContain(
       '**Collection:** 0 → 1',
     );
 
-    const end = await w.command('owner', 'season end', { game: 'halloween', champion_role: 'remove' });
+    const end = await w.staff('owner', 'season end', { game: 'halloween', champion_role: 'remove' });
     expect(text(end)).toContain('Champion role is removed');
     expect(text(await confirmLast(w, 'owner', end))).toContain('→ 🏁 ended');
     const ev = listEvents(w.ctx, 'g1', 'halloween')[0]!;
@@ -167,7 +167,7 @@ describe('Halloween, set up with one command', () => {
     try {
       const w = new World('2026-10-05T12:00:00Z');
       await serverSetup(w);
-      await w.command('owner', 'season halloween', { channel: 'spooky', wait_min: '30s', wait_max: '1m' });
+      await w.staff('owner', 'season halloween', { channel: 'spooky', wait_min: '30s', wait_max: '1m' });
       const spawn = async () => {
         recordActivity(w.ctx, 'g1', 'spooky');
         w.ctx.advance(61_000);
@@ -193,7 +193,7 @@ describe('Halloween, set up with one command', () => {
       expect(left.message.deleted).toBe(true);
 
       // Turned off: kept.
-      expect(text(await w.command('owner', 'season halloween', { delete_after: 'off' }))).toContain(
+      expect(text(await w.staff('owner', 'season halloween', { delete_after: 'off' }))).toContain(
         '**Finished visitor messages:** deleted after 5s → kept',
       );
       const kept = await spawn();
@@ -207,8 +207,8 @@ describe('Halloween, set up with one command', () => {
 
   it('rejects bad durations before changing anything', async () => {
     const w = new World('2026-10-05T12:00:00Z');
-    expect(text(await w.command('owner', 'season halloween', { channel: 'spooky', wait_min: 'soon' }))).toContain("isn't a duration");
-    expect(text(await w.command('owner', 'season halloween', { channel: 'spooky', wait_min: '5m', wait_max: '1m' }))).toContain("can't be longer");
+    expect(text(await w.staff('owner', 'season halloween', { wait_min: 'soon' }))).toContain("isn't a duration");
+    expect(text(await w.staff('owner', 'season halloween', { wait_min: '5m', wait_max: '1m' }))).toContain("can't be longer");
     expect(listEvents(w.ctx, 'g1', 'halloween')).toHaveLength(0);
     expect(getConfig(w.ctx, 'g1').hwSpawnMinS).toBe(600);
   });
@@ -217,43 +217,43 @@ describe('Halloween, set up with one command', () => {
     const w = new World('2026-10-05T12:00:00Z');
     const { PermissionFlagsBits } = await import('discord.js');
     w.role('mods', 5, PermissionFlagsBits.ManageMessages);
-    expect(text(await w.command('owner', 'season halloween', { champion_role: 'mods' }))).toContain('must not carry moderation permissions');
+    expect(text(await w.staff('owner', 'season halloween', { champion_role: 'mods' }))).toContain('must not carry moderation permissions');
     const shared = w.role('regulars');
     shared.members.set('alice', w.members.get('alice'));
     shared.members.set('bob', w.members.get('bob'));
-    expect(text(await w.command('owner', 'season halloween', { champion_role: 'regulars' }))).toContain('dedicated role');
+    expect(text(await w.staff('owner', 'season halloween', { champion_role: 'regulars' }))).toContain('dedicated role');
   });
 
   it('uploading content while live switches the running season and says so', async () => {
     const w = new World('2026-10-05T12:00:00Z');
-    await w.command('owner', 'season halloween', { channel: 'spooky' });
+    await w.staff('owner', 'season halloween', { channel: 'spooky' });
     const pack = structuredClone(DEFAULT_HALLOWEEN_PACK);
     pack.visitors[0]!.name = 'Pumpkin Pete the Great';
     vi.stubGlobal('fetch', async () => new Response(JSON.stringify(pack)));
-    const r = await w.command('owner', 'season content', { game: 'halloween', file: { url: 'https://cdn.discordapp.com/x.json', size: 1000, name: 'x.json' } });
+    const r = await w.staff('owner', 'season content', { game: 'halloween', file: { url: 'https://cdn.discordapp.com/x.json', size: 1000, name: 'x.json' } });
     expect(text(r)).toContain('v0 (built-in placeholder) → v1');
     expect(text(r)).toContain('now uses v1 (live)');
     expect(getCurrentEvent(w.ctx, 'g1', 'halloween')!.contentVersion).toBe(1);
-    const download = await w.command('owner', 'season content', { game: 'halloween' });
-    expect(download[0]!.payload.files).toHaveLength(1);
+    const download = await w.staff('owner', 'season content', { game: 'halloween' });
+    expect(download.find((c) => c.payload?.files)!.payload.files).toHaveLength(1);
     expect(text(download)).toContain('Nothing changed');
   });
 
   it('pauses the game and alerts staff when its channel disappears', async () => {
     const w = new World('2026-10-05T12:00:00Z');
     await serverSetup(w);
-    await w.command('owner', 'season halloween', { channel: 'spooky' });
+    await w.staff('owner', 'season halloween', { channel: 'spooky' });
     w.channels.delete('spooky');
     await w.tick();
     expect(getCurrentEvent(w.ctx, 'g1', 'halloween')!.state).toBe('paused');
-    expect(w.sent.some((s) => s.channelId === 'logs' && JSON.stringify(s.payload).includes('/game resume game:halloween'))).toBe(true);
+    expect(w.sent.some((s) => s.channelId === 'logs' && JSON.stringify(s.payload).includes('**Resume a paused game**'))).toBe(true);
   });
 });
 
 describe('Snowball Fights, set up with one command', () => {
   it('collect, throw, stats, join/leave and staff fixes', async () => {
     const w = new World('2026-12-05T12:00:00Z');
-    expect(text(await w.command('owner', 'season snowball', { channel: 'snow' }))).toContain('🟢 live now');
+    expect(text(await w.staff('owner', 'season snowball', { channel: 'snow' }))).toContain('🟢 live now');
 
     expect(text(await w.command('alice', 'collect', {}, 'general'))).toContain('Snowball fights happen in');
     const c = await w.command('alice', 'collect', {}, 'snow');
@@ -276,11 +276,11 @@ describe('Snowball Fights, set up with one command', () => {
     expect(text(await w.command('alice', 'throw', { target: 'bob' }, 'snow'))).toContain("isn't playing");
     expect(text(await w.command('bob', 'snowball join'))).toContain('left → playing');
 
-    const fix = await w.command('owner', 'adjust snowball-stats', { member: 'alice', stat: 'collected', value: 10, reason: 'lost' });
+    const fix = await w.staff('owner', 'adjust snowball-stats', { member: 'alice', stat: 'collected', value: 10, reason: 'lost' });
     expect(text(fix)).toContain('Before');
     expect(text(await confirmLast(w, 'owner', fix))).toContain('collected 10');
-    expect(text(await w.command('owner', 'player clear-warmup', { member: 'bob', reason: 'bug' }))).toContain('→ cleared');
-    expect(text(await w.command('owner', 'game preview', { game: 'snowball', message: 'all' }))).toContain('Direct hit');
+    expect(text(await w.staff('owner', 'player clear-warmup', { member: 'bob', reason: 'bug' }))).toContain('→ cleared');
+    expect(text(await w.staff('owner', 'game preview', { game: 'snowball', message: 'all' }))).toContain('Direct hit');
   });
 });
 
@@ -288,12 +288,12 @@ describe('Advent Calendar', () => {
   it('setup → write doors → starts itself on Dec 1 → open doors', async () => {
     const w = new World('2026-11-20T12:00:00Z');
     await serverSetup(w);
-    const setup = await w.command('owner', 'season advent', { channel: 'advent' });
+    const setup = await w.staff('owner', 'season advent', { channel: 'advent' });
     expect(text(setup)).toContain('**Status:** not scheduled → starts automatically');
     expect(text(setup)).toContain('Door 1 is missing');
 
     for (let day = 1; day <= 24; day++) {
-      const calls = await w.command('owner', 'season door', { day, candy: day === 2 ? 0 : null });
+      const calls = await w.staff('owner', 'season door', { day, candy: day === 2 ? 0 : null });
       expect(calls[0]!.type).toBe('modal');
       const res = await w.modal('owner', calls[0]!.payload.custom_id, {
         title: `Door ${day}`,
@@ -303,7 +303,7 @@ describe('Advent Calendar', () => {
       expect(text(res)).toContain(`**Door ${day}:** empty → written`);
       expect(text(res)).toContain(`**Doors written:** ${day}/24`);
     }
-    const edit = await w.command('owner', 'season door', { day: 5, candy: 15 });
+    const edit = await w.staff('owner', 'season door', { day: 5, candy: 15 });
     expect(text(await w.modal('owner', edit[0]!.payload.custom_id, { title: 'Door 5', message: 'Surprise 5' }))).toContain('**Candy:** 10 → 15');
     expect(text(await w.command('owner', 'settings'))).toContain('✅ Ready');
 
@@ -321,7 +321,7 @@ describe('Advent Calendar', () => {
     expect(text(await w.command('alice', 'advent'))).toContain('already opened');
 
     // Edits to a live calendar need a reason.
-    expect(text(await w.command('owner', 'season door', { day: 6 }))).toContain('Add a `reason`');
+    expect(text(await w.staff('owner', 'season door', { day: 6 }))).toContain('Fill in **Reason**');
 
     w.ctx.set('2026-12-04T10:00:00Z');
     await w.tick();
@@ -333,7 +333,7 @@ describe('Advent Calendar', () => {
     expect(text(candy)).toContain('Balance: **20 candy**');
     expect(text(await w.button('bob', findCustomId(candy[0]!.payload, 'candy|hist|')!))).toContain('Advent door 4');
     expect(text(await w.command('bob', 'leaderboard', { game: 'candy' }))).toContain('<@alice>');
-    expect(text(await w.command('owner', 'game repost-door', { day: 4 }))).toContain('posted again');
+    expect(text(await w.staff('owner', 'game repost-door', { day: 4 }))).toContain('posted again');
   });
 });
 
@@ -344,9 +344,9 @@ describe('help and export', () => {
     for (const game of [null, 'snowball', 'halloween', 'advent', 'candy']) {
       expect(text(await w.command('alice', 'help', { game }))).toContain('#help');
     }
-    await w.command('owner', 'season snowball', { channel: 'snow' });
-    expect((await w.command('owner', 'season export', { game: 'snowball' }))[0]!.payload.files).toHaveLength(1);
-    expect(text(await w.command('owner', 'player history'))).toContain('setup.snowball');
+    await w.staff('owner', 'season snowball', { channel: 'snow' });
+    expect((await w.staff('owner', 'season export', { game: 'snowball' })).find((c) => c.payload?.files)!.payload.files).toHaveLength(1);
+    expect(text(await w.staff('owner', 'player history'))).toContain('setup.snowball');
     expect(getEvent(w.ctx, 'g1', 'snowball-fights-2026')).not.toBeNull();
   });
 });
@@ -355,9 +355,9 @@ describe('command visibility follows which games are live', () => {
   it('shows only the live game’s commands, and reports when they appear or disappear', async () => {
     const w = new World('2026-10-05T12:00:00Z');
     await w.tick();
-    expect(w.registered).toEqual(['adjust', 'candy', 'events', 'game', 'help', 'leaderboard', 'player', 'season', 'settings', 'visitor']);
+    expect(w.registered).toEqual(['candy', 'events', 'help', 'leaderboard', 'player', 'season', 'settings', 'visitor']);
 
-    const setup = await w.command('owner', 'season halloween', { channel: 'spooky' });
+    const setup = await w.staff('owner', 'season halloween', { channel: 'spooky' });
     expect(text(setup)).toContain('**Member commands:** now showing /inventory, /treat, /trick');
     expect(w.registered).toContain('trick');
     expect(w.registered).not.toContain('collect');
@@ -369,17 +369,17 @@ describe('command visibility follows which games are live', () => {
     expect(w.commandSyncs).toBe(syncs);
 
     // Pausing keeps the commands (they explain the pause); ending hides them.
-    await w.command('owner', 'game pause', { game: 'halloween', reason: 'x' });
+    await w.staff('owner', 'game pause', { game: 'halloween', reason: 'x' });
     await w.tick();
     expect(w.registered).toContain('trick');
-    const end = await w.command('owner', 'season end', { game: 'halloween' });
+    const end = await w.staff('owner', 'season end', { game: 'halloween' });
     expect(text(await confirmLast(w, 'owner', end))).toContain('hidden /inventory, /treat, /trick');
     expect(w.registered).not.toContain('trick');
   });
 
   it('a scheduled game’s commands appear by themselves when it starts', async () => {
     const w = new World('2026-11-28T12:00:00Z');
-    await w.command('owner', 'season snowball', { channel: 'snow' });
+    await w.staff('owner', 'season snowball', { channel: 'snow' });
     await w.tick();
     expect(w.registered).not.toContain('collect');
     w.ctx.set('2026-12-01T00:00:30Z');
@@ -392,8 +392,8 @@ describe('command visibility follows which games are live', () => {
 describe('changing visitor waits on a live Halloween', () => {
   it('moves the already-booked visitor up and explains what it is waiting for', async () => {
     const w = new World('2026-10-05T12:00:00Z');
-    await w.command('owner', 'season halloween', { channel: 'spooky' }); // default 10–20 minute waits
-    const r = await w.command('owner', 'season halloween', { wait_min: '10s', wait_max: '20s' });
+    await w.staff('owner', 'season halloween', { channel: 'spooky' }); // default 10–20 minute waits
+    const r = await w.staff('owner', 'season halloween', { wait_min: '10s', wait_max: '20s' });
     expect(text(r)).toContain('**Shortest wait between visitors:** 10m → 10s');
     expect(text(r)).toContain('**Next visitor:** moved up');
 
@@ -419,7 +419,7 @@ describe('custom Halloween visitors and classes', () => {
   const picture = { url: 'https://cdn.discordapp.com/attachments/1/2/ghost.png', size: PNG.length, contentType: 'image/png' };
 
   async function addVisitor(w: World, cls: string, fields: Record<string, string>, withPicture = false) {
-    const calls = await w.command('owner', 'visitor add', { class: cls, ...(withPicture ? { picture } : {}) });
+    const calls = await w.staff('owner', 'visitor add', { class: cls, ...(withPicture ? { picture } : {}) });
     expect(calls[0]!.type).toBe('modal');
     return w.modal('owner', calls[0]!.payload.custom_id, fields);
   }
@@ -428,7 +428,7 @@ describe('custom Halloween visitors and classes', () => {
     vi.stubGlobal('fetch', async () => new Response(PNG, { headers: { 'content-type': 'image/png' } }));
     const w = new World('2026-10-05T12:00:00Z');
 
-    const calls = await w.command('owner', 'visitor add', { class: 'rare', picture, win_text: 'Ghosty swirls happily and gives {winner} one **{item}**!' });
+    const calls = await w.staff('owner', 'visitor add', { class: 'rare', picture, win_text: 'Ghosty swirls happily and gives {winner} one **{item}**!' });
     const added = await w.modal('owner', calls[0]!.payload.custom_id, { name: 'Ghosty', greeting: 'Boo! Ghosty floats in.', trick: '{name} wants a spooky TRICK!', item: 'Ghost Pin' });
     const t = text(added);
     expect(t).toContain('**Visitor:** none → Ghosty');
@@ -438,11 +438,11 @@ describe('custom Halloween visitors and classes', () => {
     expect(t).toContain('40 are built-in placeholders');
     expect(added[0]!.payload.files.length).toBeGreaterThan(0);
 
-    const removed = await w.command('owner', 'visitor remove', { visitor: '__placeholders__' });
+    const removed = await w.staff('owner', 'visitor remove', { visitor: '__placeholders__' });
     expect(text(removed)).toContain('**Active visitors now:** 1');
 
     // Ghosty is the only visitor, so it is the one that appears, with its picture and texts.
-    await w.command('owner', 'season halloween', { channel: 'spooky', wait_min: '10s', wait_max: '10s' });
+    await w.staff('owner', 'season halloween', { channel: 'spooky', wait_min: '10s', wait_max: '10s' });
     recordActivity(w.ctx, 'g1', 'spooky');
     w.ctx.advance(11_000);
     w.ctx.rolls = [0, 0, 0.1];
@@ -465,44 +465,47 @@ describe('custom Halloween visitors and classes', () => {
     expect(text(await w.command('alice', 'inventory'))).toContain('Ghost Pin');
 
     // Editing reports the change; classes can be tuned.
-    const edit = await w.command('owner', 'visitor edit', { visitor: 'ghosty', class: 'legendary' });
+    const edit = await w.staff('owner', 'visitor edit', { visitor: 'ghosty', class: 'legendary' });
     expect(text(await w.modal('owner', edit[0]!.payload.custom_id, { name: 'Ghosty', greeting: 'Boo! Ghosty floats in.', trick: '{name} wants a spooky TRICK!', item: 'Ghost Pin' }))).toContain(
       '**Class:** 🟣 Rare → 🟡 Legendary (+10 bonus candy)',
     );
-    expect(text(await w.command('owner', 'visitor class', { class: 'legendary', chance: 5, bonus_candy: 25 }))).toContain('+10 → +25');
-    expect(text(await w.command('owner', 'visitor class', { class: 'legendary', chance: 5, bonus_candy: 25 }))).toContain('Nothing changed');
-    expect(text(await w.command('owner', 'visitor class', { class: 'legendary', rarity_text: 'WOW. A legendary find!' }))).toContain('Legendary rarity text:');
+    expect(text(await w.staff('owner', 'visitor class', { class: 'legendary', chance: 5, bonus_candy: 25 }))).toContain('+10 → +25');
+    expect(text(await w.staff('owner', 'visitor class', { class: 'legendary', chance: 5, bonus_candy: 25 }))).toContain('Nothing changed');
+    expect(text(await w.staff('owner', 'visitor class', { class: 'legendary', rarity_text: 'WOW. A legendary find!' }))).toContain('Legendary rarity text:');
 
     // Removing the last visitor is refused; with a second one, Ghosty is retired (Alice keeps her pin).
-    expect(text(await w.command('owner', 'visitor remove', { visitor: 'ghosty' }))).toContain('leave no visitors');
+    expect(text(await w.staff('owner', 'visitor remove', { visitor: 'ghosty' }))).toContain('leave no visitors');
     await addVisitor(w, 'common', { name: 'Batsy' });
-    expect(text(await w.command('owner', 'visitor remove', { visitor: 'ghosty' }))).toContain('**Retired:** Ghosty');
+    expect(text(await w.staff('owner', 'visitor remove', { visitor: 'ghosty' }))).toContain('**Retired:** Ghosty');
     expect(text(await w.command('alice', 'inventory'))).toContain('Ghost Pin');
-    expect(text(await w.command('owner', 'visitor list'))).toContain('Batsy');
-    expect(text(await w.command('owner', 'visitor list'))).not.toContain('Ghosty');
+    expect(text(await w.staff('owner', 'visitor list'))).toContain('Batsy');
+    expect(text(await w.staff('owner', 'visitor list'))).not.toContain('Ghosty');
   });
 
   it('refuses non-image files and duplicate names', async () => {
     const w = new World('2026-10-05T12:00:00Z');
-    expect(text(await w.command('owner', 'visitor add', { class: 'rare', picture: { ...picture, contentType: 'application/pdf' } }))).toContain('PNG, JPG, GIF or WEBP');
+    expect(text(await w.staff('owner', 'visitor add', { class: 'rare', picture: { ...picture, contentType: 'application/pdf' } }))).toContain('PNG, JPG, GIF or WEBP');
     await addVisitor(w, 'rare', { name: 'Ghosty' });
     expect(text(await addVisitor(w, 'rare', { name: 'ghosty' }))).toContain('already a visitor called');
   });
 });
 
-describe('/admin message-test', () => {
+describe('message previews', () => {
   it('previews every message for each game with real content, privately, with buttons disabled', async () => {
-    const { TEST_MESSAGES, messageChoices } = await import('../src/discord/handlers/messageTest.js');
+    const { TEST_MESSAGES } = await import('../src/discord/handlers/messageTest.js');
+    const { PANELS } = await import('../src/discord/panels.js');
     const w = new World('2026-10-05T12:00:00Z');
-    await w.command('owner', 'season halloween', { channel: 'spooky' });
+    await w.staff('owner', 'season halloween', { channel: 'spooky' });
 
-    expect(messageChoices('halloween', '')[0]!.name).toBe(`All ${TEST_MESSAGES.halloween.length} messages`);
-    expect(messageChoices('halloween', 'win card').map((c) => c.value)).toEqual(['win', 'win-duplicate']);
+    const form = PANELS.season.actions.find((a) => a.id === 'preview-halloween')!.fields!(w.bot, w.guild);
+    const message = form.find((f) => f.id === 'message')!;
+    expect(message.kind === 'select' && message.options[0]!.label).toBe(`All ${TEST_MESSAGES.halloween.length} messages`);
 
-    const all = await w.command('owner', 'game preview', { game: 'halloween', message: 'all', visitor: 'pumpkin-pete' });
+    const calls = await w.staff('owner', 'game preview', { game: 'halloween', message: 'all', visitor: 'pumpkin-pete' });
+    expect(calls[0]!.type).toBe('update'); // the menu refreshes first
+    const all = calls.slice(1);
     expect(all).toHaveLength(TEST_MESSAGES.halloween.length);
-    expect(all[0]!.type).toBe('reply');
-    expect(all.slice(1).every((c) => c.type === 'followUp' && c.payload.flags !== undefined)).toBe(true);
+    expect(all.every((c) => c.type === 'followUp' && c.payload.flags !== undefined)).toBe(true);
     const t = text(all);
     expect(t).toContain('Test 1/13: Visitor arrives (wants a Trick)');
     expect(t).toContain('Pumpkin Pete');
@@ -514,18 +517,18 @@ describe('/admin message-test', () => {
     expect(w.ctx.db.prepare('SELECT COUNT(*) n FROM hw_encounters').get()).toEqual({ n: 0 });
     expect(getBalance(w.ctx, 'g1', 'owner')).toBe(0);
 
-    const pub = await w.command('owner', 'game preview', { game: 'snowball', message: 'hit', public: true });
-    expect(pub[0]!.payload.flags).toBeUndefined();
+    const pub = await w.staff('owner', 'game preview', { game: 'snowball', message: 'hit', public: true });
+    expect(pub.find((c) => c.type !== 'update')!.payload.flags).toBeUndefined();
     expect(text(pub)).toContain('Direct hit');
 
     // Advent without doors explains what's missing instead of failing.
-    await w.command('owner', 'season advent', { channel: 'advent' });
-    expect(text(await w.command('owner', 'game preview', { game: 'advent', message: 'door-post' }))).toContain('No doors are written yet');
-    expect(text(await w.command('owner', 'game preview', { game: 'snowball', message: 'results' }))).toContain('Run `/season snowball` first');
-    await w.command('owner', 'season snowball', { channel: 'snow' });
-    const snow = await w.command('owner', 'game preview', { game: 'snowball', message: 'all' });
-    expect(snow).toHaveLength(TEST_MESSAGES.snowball.length);
-    expect(text(snow)).not.toContain('⚠️');
+    await w.staff('owner', 'season advent', { channel: 'advent' });
+    expect(text(await w.staff('owner', 'game preview', { game: 'advent', message: 'door-post' }))).toContain('No doors are written yet');
+    expect(text(await w.staff('owner', 'game preview', { game: 'snowball', message: 'results' }))).toContain('Run `/season` → **Set up Snowball Fights** first');
+    await w.staff('owner', 'season snowball', { channel: 'snow' });
+    const snow = await w.staff('owner', 'game preview', { game: 'snowball', message: 'all' });
+    expect(snow.filter((c) => c.type !== 'update')).toHaveLength(TEST_MESSAGES.snowball.length);
+    expect(text(snow.filter((c) => c.type !== 'update'))).not.toContain('⚠️'); // the refreshed menu may list setup warnings
   });
 });
 
@@ -534,33 +537,33 @@ describe('player items and wipes', () => {
     const w = new World('2026-10-05T12:00:00Z');
     await serverSetup(w);
     w.members.get('mod')!.roles.cache.set('staff', true);
-    await w.command('owner', 'season halloween', { channel: 'spooky' });
+    await w.staff('owner', 'season halloween', { channel: 'spooky' });
     const A = 'pumpkin-pete.golden-gourd';
     const B = DEFAULT_HALLOWEEN_PACK.visitors[1]!.items[0]!.id;
     for (const [who, item] of [['alice', A], ['alice', B], ['bob', A]] as const) {
-      expect(text(await w.command('mod', 'player give-item', { member: who, item, reason: 'test' }))).toContain('Collection:');
+      expect(text(await w.staff('mod', 'player give-item', { member: who, item, reason: 'test' }))).toContain('Collection:');
     }
-    await w.command('owner', 'adjust candy', { member: 'alice', amount: 7, reason: 'test' }).then((c) => confirmLast(w, 'owner', c));
+    await w.staff('owner', 'adjust candy', { member: 'alice', amount: 7, reason: 'test' }).then((c) => confirmLast(w, 'owner', c));
 
     // Remove one specific item.
-    expect(text(await w.command('mod', 'player remove-item', { member: 'alice', item: B, reason: 'dupe bug' }))).toContain('**Collection:** 2 → 1');
+    expect(text(await w.staff('mod', 'player remove-item', { member: 'alice', item: B, reason: 'dupe bug' }))).toContain('**Collection:** 2 → 1');
 
     // Wipe one member (staff can), with a confirmation.
-    const ask = await w.command('mod', 'player wipe-items', { member: 'alice', reason: 'cheating' });
+    const ask = await w.staff('mod', 'player wipe-items', { member: 'alice', reason: 'cheating' });
     expect(text(ask)).toContain("can't be undone");
     expect(text(await confirmLast(w, 'mod', ask))).toContain("<@alice>'s collection in Halloween 2026:** 1 item → 0");
-    expect(text(await w.command('mod', 'player wipe-items', { member: 'alice', reason: 'again' }))).toContain('Nothing changed');
+    expect(text(await w.staff('mod', 'player wipe-items', { member: 'alice', reason: 'again' }))).toContain('Nothing changed');
     expect(getBalance(w.ctx, 'g1', 'alice')).toBe(7);
 
     // Wiping everyone is admin-only.
-    expect(text(await w.command('mod', 'season wipe-items', { reason: 'reset' }))).toContain('Only server administrators');
-    const all = await w.command('owner', 'season wipe-items', { reason: 'fresh start' });
+    expect(text(await w.staff('mod', 'season wipe-items', { reason: 'reset' }))).toContain('Only server administrators');
+    const all = await w.staff('owner', 'season wipe-items', { reason: 'fresh start' });
     expect(text(all)).toContain('every** collection (1 members)');
     expect(text(await confirmLast(w, 'owner', all))).toContain('Collections (1 members) in Halloween 2026:** 1 item → 0');
     expect(text(await w.command('bob', 'inventory'))).toContain('0/120');
 
     // Both show up in the staff log.
-    const log = text(await w.command('mod', 'player history'));
+    const log = text(await w.staff('mod', 'player history'));
     expect(log).toContain('halloween.collection.wipe-all');
     expect(log).toContain('halloween.collection.wipe');
   });
@@ -568,16 +571,81 @@ describe('player items and wipes', () => {
   it('/settings with no options shows the checklist; /help lists staff commands only to staff', async () => {
     const w = new World('2026-10-05T12:00:00Z');
     await serverSetup(w);
-    expect(text(await w.command('owner', 'settings'))).toContain('setup status');
+    expect(text(await w.command('owner', 'settings'))).toContain('emojitown settings');
     const member = text(await w.command('alice', 'help'));
     expect(member).not.toContain('/season');
     expect(member).not.toContain('/player');
+    expect(member).not.toContain('/settings');
     w.members.get('mod')!.roles.cache.set('staff', true);
     const staff = text(await w.command('mod', 'help'));
     expect(staff).toContain('/player');
-    expect(staff).not.toContain('/season');
+    expect(staff).toContain('/season');
+    expect(staff).not.toContain('/settings');
     const admin = text(await w.command('owner', 'help'));
-    expect(admin).toContain('/season');
-    expect(admin).toContain('/player');
+    expect(admin).toContain('/settings');
+    expect(admin).toContain('/visitor');
+  });
+});
+
+describe('staff menus', () => {
+  const options = (calls: { payload: any }[]) =>
+    JSON.parse(text(calls))
+      .flatMap((p: any) => p?.components ?? [])
+      .flatMap((r: any) => (r.toJSON ? r.toJSON() : r).components)
+      .flatMap((c: any) => c.options ?? [])
+      .map((o: any) => o.value);
+
+  it('each menu lists only what the person may do', async () => {
+    const w = new World('2026-10-05T12:00:00Z');
+    await serverSetup(w);
+    w.members.get('mod')!.roles.cache.set('staff', true);
+
+    expect(text(await w.command('alice', 'season'))).toContain('Only event staff');
+    expect(text(await w.command('mod', 'settings'))).toContain('Only server administrators');
+
+    const modSeason = options(await w.command('mod', 'season'));
+    expect(modSeason).toEqual(expect.arrayContaining(['pause', 'resume', 'preview-halloween', 'send-visitor-away', 'fix-champion', 'repost-door']));
+    expect(modSeason).not.toContain('start');
+    expect(modSeason).not.toContain('wipe-items');
+    const ownerSeason = options(await w.command('owner', 'season'));
+    expect(ownerSeason).toEqual(expect.arrayContaining(['halloween', 'start', 'end', 'wipe-items', 'export', 'pause']));
+    expect(ownerSeason.length).toBeLessThanOrEqual(25);
+
+    const modPlayer = options(await w.command('mod', 'player'));
+    expect(modPlayer).toContain('remove-item');
+    expect(modPlayer).not.toContain('candy');
+    expect(options(await w.command('owner', 'player'))).toContain('candy');
+
+    // Picking an admin action you can't use (e.g. an old menu) is refused.
+    expect(text(await w.select('mod', 'panel|season', ['wipe-items']))).toContain('Only server administrators');
+  });
+
+  it('every action opens a valid form (max 5 fields) prefilled with the current values', async () => {
+    const w = new World('2026-10-05T12:00:00Z');
+    await serverSetup(w);
+    await w.staff('owner', 'season halloween', { channel: 'spooky' });
+    const { PANELS } = await import('../src/discord/panels.js');
+    for (const panel of Object.values(PANELS)) {
+      for (const a of panel.actions.filter((x) => x.fields)) {
+        const calls = await w.select('owner', `panel|${panel.name}`, [a.id]);
+        const modal = calls.find((c) => c.type === 'modal');
+        expect(modal, `${panel.name}/${a.id}: ${text(calls)}`).toBeDefined();
+        expect(modal!.payload.components.length, a.id).toBeLessThanOrEqual(5);
+        expect(modal!.payload.custom_id).toBe(`act|${panel.name}|${a.id}`);
+      }
+    }
+    const timing = await w.select('owner', 'panel|season', ['halloween-timing']);
+    expect(text(timing)).toContain('"value":"10m"');
+    expect(text(timing)).toContain('"value":"5s"');
+    // Small menus use buttons.
+    expect(findCustomId((await w.command('owner', 'settings'))[0]!.payload, 'pact|')).toBe('pact|settings|edit');
+  });
+
+  it('a form that needs a second step continues with a button', async () => {
+    const w = new World('2026-10-05T12:00:00Z');
+    await serverSetup(w);
+    const i = await w.action('owner', 'visitor', 'add', { class: 'rare' });
+    expect(i[0]!.type).toBe('modal'); // pressed Continue: the name and texts form opened
+    expect(i[0]!.payload.custom_id).toMatch(/^visitorform\|/);
   });
 });

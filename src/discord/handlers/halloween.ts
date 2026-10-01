@@ -32,7 +32,7 @@ import {
 import { paginate } from '../../domain/ranking.js';
 import { reply, type Button, type ChatInput, type Component, type HandlerSet } from '../interaction.js';
 import { assertSafeChampionRole, fetchTextChannel, syncChampionRole, type Bot } from '../runtime.js';
-import { button, cid, COLORS, embed, field, mention, pager, rankLabel, row, truncate, when } from '../ui.js';
+import { button, cid, COLORS, embed, field, mention, pager, rankLabel, row, when } from '../ui.js';
 
 export const RARITY_LABEL: Record<Rarity, string> = CLASS_LABEL;
 const RARITY_COLOR: Record<Rarity, number> = { common: 0x9e9e9e, uncommon: 0x4caf50, rare: 0x9c27b0, legendary: 0xffc107 };
@@ -375,32 +375,3 @@ export function visitorStatusText(bot: Bot, guildId: string): string {
   }
 }
 
-/** Item names for autocomplete. */
-/** Item suggestions. With `ownerId`, only items that member owns this season. */
-export function itemChoices(bot: Bot, guildId: string, query: string, ownerId?: string): { name: string; value: string }[] {
-  const ev = getCurrentOrLatestEvent(bot.ctx, guildId, 'halloween');
-  const pack = ev ? packFor(bot.ctx, ev) : getPack(bot.ctx, guildId, 'halloween');
-  const q = query.toLowerCase();
-  const owned =
-    ownerId && ev
-      ? new Set(
-          (bot.ctx.db.prepare('SELECT item_id FROM hw_items WHERE guild_id = ? AND event_id = ? AND user_id = ?').all(guildId, ev.id, ownerId) as { item_id: string }[]).map(
-            (r) => r.item_id,
-          ),
-        )
-      : null;
-  return pack.visitors
-    .flatMap((v) => v.items.filter((it) => !owned || owned.has(it.id)).map((it) => ({ name: truncate(`${it.name} (${it.rarity}, ${v.name})`, 100), value: it.id })))
-    .filter((c) => c.name.toLowerCase().includes(q) || c.value.includes(q))
-    .slice(0, 25);
-}
-
-export function visitorChoices(bot: Bot, guildId: string, query: string): { name: string; value: string }[] {
-  const ev = getCurrentOrLatestEvent(bot.ctx, guildId, 'halloween');
-  const pack = ev ? packFor(bot.ctx, ev) : getPack(bot.ctx, guildId, 'halloween');
-  const q = query.toLowerCase();
-  return pack.visitors
-    .filter((v) => v.name.toLowerCase().includes(q) || v.id.includes(q))
-    .slice(0, 25)
-    .map((v) => ({ name: truncate(v.name, 100), value: v.id }));
-}

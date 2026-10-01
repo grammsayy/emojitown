@@ -5,18 +5,18 @@ import { type Feature } from '../domain/events.js';
 import { levelFor } from './commands.js';
 import { adventHandlers } from './handlers/advent.js';
 import { candyHandlers } from './handlers/candy.js';
-import { halloweenHandlers, itemChoices, visitorChoices } from './handlers/halloween.js';
+import { halloweenHandlers } from './handlers/halloween.js';
 import { helpHandlers } from './handlers/help.js';
 import { manageHandlers } from './handlers/manage.js';
-import { messageChoices } from './handlers/messageTest.js';
-import { visitorAdminChoices, visitorHandlers } from './handlers/visitors.js';
+import { visitorHandlers } from './handlers/visitors.js';
+import { panelHandlers } from './panels.js';
 import { seasonChoices, seasonHandlers } from './handlers/season.js';
 import { snowballHandlers } from './handlers/snowball.js';
 import { reply, type Button, type ChatHandler, type ComponentHandler, type ConfirmHandler, type HandlerSet } from './interaction.js';
 import { assertLevel, type Bot, type Level } from './runtime.js';
 import { COLORS, embed } from './ui.js';
 
-const SETS: HandlerSet[] = [snowballHandlers, halloweenHandlers, adventHandlers, candyHandlers, seasonHandlers, helpHandlers, manageHandlers, visitorHandlers];
+const SETS: HandlerSet[] = [snowballHandlers, halloweenHandlers, adventHandlers, candyHandlers, seasonHandlers, helpHandlers, manageHandlers, visitorHandlers, panelHandlers];
 
 const chat = new Map<string, ChatHandler>();
 const components = new Map<string, ComponentHandler>();
@@ -42,23 +42,7 @@ async function autocomplete(bot: Bot, i: AutocompleteInteraction<'cached'>): Pro
   const focused = i.options.getFocused(true);
   const q = String(focused.value).toLowerCase();
   let choices: { name: string; value: string }[] = [];
-  if (focused.name === 'season') {
-    choices = seasonChoices(bot, i.guildId, seasonFeature(i), q);
-  } else if (focused.name === 'message') {
-    choices = messageChoices(i.options.getString('game'), q);
-  } else if (focused.name === 'item') {
-    const owner = i.options.getSubcommand(false) === 'remove-item' ? i.options.get('member')?.value : undefined;
-    choices = itemChoices(bot, i.guildId, q, typeof owner === 'string' ? owner : undefined);
-  } else if (focused.name === 'visitor' && i.commandName === 'visitor') {
-    choices = visitorAdminChoices(bot, i.guildId, q, i.options.getSubcommand(false) === 'remove');
-  } else if (focused.name === 'visitor') {
-    choices = visitorChoices(bot, i.guildId, q);
-  } else if (focused.name === 'timezone') {
-    choices = Intl.supportedValuesOf('timeZone')
-      .filter((z) => z.toLowerCase().includes(q))
-      .slice(0, 25)
-      .map((z) => ({ name: z, value: z }));
-  }
+  if (focused.name === 'season') choices = seasonChoices(bot, i.guildId, seasonFeature(i), q);
   await i.respond(choices);
 }
 
@@ -148,7 +132,7 @@ async function confirm(bot: Bot, i: Button, accepted: boolean, token: string): P
     await i.editReply(typeof result === 'string' ? { content: result, embeds: [], components: [] } : { content: '', embeds: [result], components: [] });
   } catch (err) {
     if (!(err instanceof UserError)) console.error(`confirmed action ${kind} failed`, err);
-    const message = err instanceof UserError ? err.message : 'Something went wrong on our side. Please check `/player history` before retrying.';
+    const message = err instanceof UserError ? err.message : 'Something went wrong on our side. Please check `/player` → **History** before retrying.';
     await i.editReply({ content: '', embeds: [embed(COLORS.warn, 'Not saved', message)], components: [] });
   }
 }

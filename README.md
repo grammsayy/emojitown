@@ -50,8 +50,9 @@ Development: `npm test` (Vitest), `npm run typecheck`, `npm run dev` (runs from 
 
 ## Commands
 
-Commands are grouped by topic. Each staff command has one access level, so whoever can see a command can use all of
-it. `/help` lists the staff commands to the people who can use them.
+Staff commands are **menus**: one command per topic. Run it, pick what you want to do, and a form pops up with only
+the fields that action needs, already filled in with the current values. Each menu only lists what you're allowed to
+do. `/help` lists the staff commands to the people who can use them.
 
 ### Members
 
@@ -64,70 +65,64 @@ Game commands only appear while that game is live.
 Always                /candy [member] · /leaderboard [game] [season] [page] · /events · /help [game]
 ```
 
-### Admins (Manage Server)
+### Staff
 
 ```
-/settings                     Server settings. Run it with no options for the setup checklist
-  timezone · staff_role · remove_staff_role · log_channel · support
+/settings   (admins)              Shows the setup checklist
+  Change settings                 Timezone, staff roles, log channel, support link
 
-/season halloween             Set up Trick or Treat (goes live on its own when the dates arrive)
-  channel · remove_channel · start · end · wait_min · wait_max · visit_length
-  delete_after · candy_per_win · daily_candy_limit · champion_role
-/season snowball              Set up Snowball Fights
-  channel · remove_channel · start · end
-/season advent                Set up the Advent Calendar
-  channel · start · doors · unlock_time · catch_up
-/season door <day>            Write or edit one Advent door (opens a form)
-/season content <game>        Download the texts/artwork JSON, or upload it with file:
-/season start <game>          Start a game now instead of waiting for its start date
-/season end <game>            End a game and post the results (asks to confirm)
-/season announce <game> <channel>   Post how-to-play instructions (shows a preview first)
-/season wipe-items <reason>   Delete EVERY member's Halloween items this season (asks to confirm)
-/season export <game>         Download all data for a game
+/season     (event staff; admins see everything)
+  Set up Halloween                Channels, dates, Champion role                              admins
+  Halloween visitor timing        Waits between visitors, visit length, auto-delete           admins
+  Halloween candy                 Candy per win, daily limit                                  admins
+  Set up Snowball Fights          Channels, dates                                             admins
+  Set up the Advent Calendar      Channel, start day, doors, opening time, catch-up           admins
+  Write an Advent door            Door number, candy → Continue → the door form               admins
+  Content file                    Download or upload a game's texts and artwork (JSON)        admins
+  Start a game now                                                                            admins
+  Pause a game / Resume a paused game
+  End a game                      Posts the results (asks to confirm)                         admins
+  Announce a game                 Posts how-to-play instructions (shows a preview first)      admins
+  Preview Halloween / Snowball Fights / Advent Calendar messages
+  Send the visitor away
+  Fix the Champion role
+  Repost an Advent door
+  Wipe ALL Halloween items        Every member's items this season (asks to confirm)          admins
+  Export data                     All data for one season as a file                           admins
 
-/visitor add <class>          Create a Halloween visitor (a form asks for its name and texts)
-/visitor edit <visitor>       Change a visitor's class, picture or texts
-/visitor remove <visitor>     Remove a visitor, or all placeholder visitors
-/visitor list                 All visitors with their classes and pictures
-/visitor class <class>        How often a class appears, its bonus candy and its rarity text
-/visitor export [rarity]      Download items as a spreadsheet to mass-edit
-/visitor import <file>        Upload the edited spreadsheet (you confirm the changes first)
+/visitor    (admins)              Shows how many visitors each class has
+  Add a visitor                   Class, picture, win text → Continue → name and texts
+  Edit a visitor                  Visitor, class, picture, win text → Continue → name and texts
+  Remove a visitor                One visitor, or all placeholder visitors
+  List visitors
+  Visitor classes                 Chance, bonus candy and rarity text of a class
+  Export items (spreadsheet)      Download items as a CSV to mass-edit
+  Import items (spreadsheet)      Upload the edited CSV (you confirm the changes first)
 
-/adjust candy <member> <amount> <reason>      Give candy, or take it with a negative number
-/adjust undo-candy <transaction> <reason>     Reverse one candy transaction
-/adjust snowball-stats <member> <stat> <value> <reason>   Correct a snowball stat
+/player     (event staff; admins see everything)
+  History                         A member's candy and staff actions, or the whole staff log
+  Give an item / Remove an item   One Halloween item (candy is kept)
+  Wipe a member's items           All their Halloween items this season (asks to confirm)
+  Clear a snowball warm-up
+  Exclude a member / Include a member
+  Give or take candy              (asks to confirm)                                           admins
+  Undo a candy transaction                                                                    admins
+  Correct snowball stats          (asks to confirm)                                           admins
 ```
 
-### Event staff (staff role, and admins)
-
-```
-/game pause <game> <reason>         Pause a game. Progress is kept
-/game resume <game>                 Resume a paused game
-/game preview <game> <message>      See any message members can get, with your real content
-/game send-visitor-away <reason>    The Halloween visitor here now leaves without rewards
-/game fix-champion                  Re-check who should have the Champion role
-/game repost-door <day>             Post an Advent door's announcement again
-
-/player history [member]            A member's candy history and staff actions (no member: the whole staff log)
-/player give-item <member> <item>   Give a Halloween item (no candy changes)
-/player remove-item <member> <item> Take one item out of a member's collection (suggests only items they own)
-/player wipe-items <member>         Delete all of one member's Halloween items this season (asks to confirm)
-/player clear-warmup <member>       Let a member who was hit by a snowball collect again
-/player exclude | include <member> <game>   Stop a member from playing, or let them play again
-```
-
-Every staff action that changes something takes a `reason` (saved in the staff log) and replies with **what changed**
-(`**Collection:** 2 → 1`), or says **Nothing changed**. Wipes and removals keep the candy already earned and
-recalculate the Champion.
+Every action that changes something replies with **what changed** (`**Collection:** 2 → 1`), or says **Nothing
+changed**. Changes made by staff need a reason, which is saved in the staff log. Wipes and item removals keep the
+candy already earned and recalculate the Champion. Discord can't open a form directly from another form, so actions
+with two forms (adding a visitor, writing a door) show a **Continue** button between them.
 
 ### Halloween visitors in detail
 
-| Option | What it does |
+| Field | What it does |
 | --- | --- |
-| `picture:` / `picture_url:` | Pictures are stored by the bot (Discord attachment links expire). |
-| `win_text:` | The text on the win card, e.g. `As a thank you, they give {winner} one **{item}**`. Placeholders: `{winner}`, `{item}`, `{name}`, `{request}`. |
-| `/visitor remove` | Visitors someone already collected from are retired instead, so nobody loses items. |
-| `/visitor export` / `import` | One row per item: all, Common, Uncommon + Rare, or one rarity. Every row is checked (errors list the row number), then a summary is shown and applied only on **Confirm**. Rows with an empty `item_id` add new items/visitors. Don't change `item_id`/`visitor_id`. Excel: save as **CSV UTF-8**. |
+| **Picture** / **link** | Pictures are stored by the bot (Discord attachment links expire). Type `none` in the link field when editing to remove the picture. |
+| **Win text** | The text on the win card, e.g. `As a thank you, they give {winner} one **{item}**`. Placeholders: `{winner}`, `{item}`, `{name}`, `{request}`. |
+| **Remove a visitor** | Visitors someone already collected from are retired instead, so nobody loses items. |
+| **Export** / **Import items** | One row per item: all, Common, Uncommon + Rare, or one rarity. Every row is checked (errors list the row number), then a summary is shown and applied only on **Confirm**. Rows with an empty `item_id` add new items/visitors. Don't change `item_id`/`visitor_id`. Excel: save as **CSV UTF-8**. |
 
 How a visit is chosen: first a class, weighted by its chance (only classes that currently have visitors count), then
 one of that class's visitors at random. The winner gets the normal candy plus the class bonus (default +0 / +2 / +5 / +10),
@@ -135,12 +130,12 @@ within the daily Halloween candy limit. Changes apply to the live season immedia
 
 The win card follows the classic layout: title ("Happy Halloween!"), the win text naming the winner and item, the item's
 picture large (the visitor's picture if the item has none), then the class's rarity line and the candy earned. The
-side colour matches the rarity. Finished visitor messages are deleted after `delete_after` (default 5 seconds).
+side colour matches the rarity. Finished visitor messages are deleted after a delay you set in **Halloween visitor timing** (default 5 seconds).
 
-`/game preview game:halloween message:<pick>` shows any message members can see (visitor arrival, win card,
+`/season` → **Preview Halloween messages** shows any message members can see (visitor arrival, win card,
 duplicate, winner's private reply, candy-limit reply, wrong answer, visitor leaving, results, announcement; the
 snowball and Advent messages too) with your real visitors, pictures and texts. Pick **All** to see every message.
-Optional `visitor:` / `day:` choose what to show, and `public:true` posts it in the channel. Nothing is saved.
+Optional **Visitor** / **Door** choose what to show, and **Who sees it** can post it in the channel. Nothing is saved.
 
 ### Who can see what
 
@@ -152,8 +147,9 @@ commands appeared or disappeared. A paused game keeps its commands so they can e
 
 Staff commands are hidden from regular members (they require **Manage Server** by default). The bot also checks
 permissions on every command, button and form itself, so changing Discord's command settings never grants more
-access. **One manual step:** so your staff role can see `/game` and `/player`, open
-**Server Settings → Integrations → emojitown**, click `/game` and `/player`, and add the role to each.
+access. **One manual step:** so your staff role can see `/season` and `/player`, open
+**Server Settings → Integrations → emojitown**, click `/season` and `/player`, and add the role to each. Staff then
+see only the staff actions in those menus.
 
 Role safety: the Halloween Champion role must be a dedicated role with no moderation permissions, held by at most one
 member, and must not be `@everyone` or a staff role, because the bot removes it from everyone except the winner.
@@ -168,12 +164,12 @@ member, and must not be `@everyone` or a staff role, because the bot removes it 
 
 ## First-time setup in Discord
 
-1. `/settings timezone:Europe/Copenhagen staff_role:@Event Staff log_channel:#staff-log support:#help`
-2. Let the staff role see `/game` and `/player` (Server Settings → Integrations → emojitown).
-3. `/season halloween channel:#spooky champion_role:@Halloween Champion`
-4. Add your visitors with `/visitor add`, or mass-edit with `/visitor export` and `/visitor import`.
-5. Before December: `/season snowball channel:#snow`, `/season advent channel:#advent`, then `/season door day:1` … `day:24`.
-6. `/settings` with no options any time to see what's left.
+1. `/settings` → **Change settings**: timezone, staff role, log channel, support link.
+2. Let the staff role see `/season` and `/player` (Server Settings → Integrations → emojitown).
+3. `/season` → **Set up Halloween**: pick the channel and the Champion role.
+4. `/visitor` → **Add a visitor**, or mass-edit with **Export items** and **Import items**.
+5. Before December: `/season` → **Set up Snowball Fights**, **Set up the Advent Calendar**, then **Write an Advent door** for each day.
+6. `/settings` any time to see what's left.
 
 ## How it works
 
@@ -208,7 +204,7 @@ Reliability notes:
 
 ## Content packs
 
-Snowball pack (`/season content game:snowball`):
+Snowball pack (`/season` → **Content file**):
 
 ```json
 {
@@ -233,22 +229,22 @@ names, artwork and wording before launch (spec section 13).
 
 ## Decisions where the spec left room
 
-- **Simplified commands.** One `/season <game>` command creates the season with default dates, turns on automatic
+- **Simplified commands.** One **Set up** action per game creates the season with default dates, turns on automatic
   start and starts it if it's due, instead of separate create/schedule/check/start steps. Advent calendars publish
   themselves when they start. The spec's separate `/halloween missing`, `/halloween visitors`, `/advent calendar`,
   `/advent progress` and `/candy history` views are buttons on `/inventory`, `/advent` and `/candy`; `/support` is part
-  of `/help`; the spec's season status view is `/events`. Visitor classes (chance, bonus candy, rarity text) are set with `/visitor class`.
-- **Forms.** `/season door` opens a Discord form (5 fields: title, message, image, link, trivia answer); `candy` and
-  `reason` are command options.
-- **Confirmations.** `/season end`, `/season announce`, `/season wipe-items`, `/player wipe-items`, `/adjust candy`, `/adjust undo-candy` and `/adjust snowball-stats`
+  of `/help`; the spec's season status view is `/events`. Visitor classes (chance, bonus candy, rarity text) are set with `/visitor` → **Visitor classes**.
+- **Forms.** **Write an Advent door** asks for the door number, candy and reason, then opens the door form (title,
+  message, image, link, trivia answer).
+- **Confirmations.** Ending or announcing a game, wiping items, giving or taking candy, undoing candy and correcting snowball stats
   show a preview with Confirm/Cancel. Only the requester can confirm or cancel, once, and permissions are checked again.
 - **Timezone.** Event dates are stored as local dates, so changing the timezone keeps the same local times in the new
-  zone; `/settings` lists each season's moved start time.
+  zone; **Change settings** lists each season's moved start time.
 - **Advent settings** (door count, unlock time, catch-up) are server-wide; with catch-up on, missed doors can be
   claimed until the calendar ends.
 - **Exclusions.** Excluded members can still read Advent doors but receive no reward. Members who `/snowball leave`
   keep their place on the leaderboard (their progress is preserved), while excluded or departed members leave the
   standings. The candy leaderboard hides departed members and members excluded from every game.
 - **Snowball corrections** keep `available = collected − hits − misses`, so totals stay consistent and nonnegative.
-- **Missing channels** pause the affected game and alert staff in the log channel; resume with `/game resume` after
+- **Missing channels** pause the affected game and alert staff in the log channel; resume with `/season` → **Resume a paused game** after
   fixing it.

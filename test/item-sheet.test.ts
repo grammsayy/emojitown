@@ -18,19 +18,19 @@ describe('csv', () => {
 
 describe('/visitor export and import', () => {
   async function download(w: World, rarity: string) {
-    const r = await w.command('owner', 'visitor export', { rarity });
-    const file = r[0]!.payload.files[0];
+    const r = await w.staff('owner', 'visitor export', { rarity });
+    const file = r.find((c) => c.payload?.files)!.payload.files[0];
     return { reply: r, csv: Buffer.from(file.attachment).toString('utf8') };
   }
 
   async function upload(w: World, csv: string) {
     vi.stubGlobal('fetch', async () => new Response(csv));
-    return w.command('owner', 'visitor import', { file: { url: 'https://cdn.discordapp.com/attachments/1/2/items.csv', size: csv.length, name: 'items.csv' } });
+    return w.staff('owner', 'visitor import', { file: { url: 'https://cdn.discordapp.com/attachments/1/2/items.csv', size: csv.length, name: 'items.csv' } });
   }
 
   it('mass-edits commons, and uncommon + rare, via a spreadsheet', async () => {
     const w = new World('2026-10-05T12:00:00Z');
-    await w.command('owner', 'season halloween', { channel: 'spooky' });
+    await w.staff('owner', 'season halloween', { channel: 'spooky' });
 
     const commons = await download(w, 'common');
     expect(text(commons.reply)).toContain('40 common items');
@@ -80,7 +80,7 @@ describe('/visitor export and import', () => {
 
   it('reads files saved by Excel with semicolons', async () => {
     const w = new World('2026-10-05T12:00:00Z');
-    expect(text(await w.command('owner', 'visitor export', { rarity: 'legendary' }))).toContain('There are no legendary items to export');
+    expect(text(await w.staff('owner', 'visitor export', { rarity: 'legendary' }))).toContain('There are no legendary items to export');
     const semi = '﻿item_id;visitor_name;item_name;item_rarity\r\npumpkin-pete.golden-gourd;🎃 Pumpkin Pete;Golden Gourd;legendary\r\n';
     const preview = await upload(w, semi);
     expect(text(preview)).toContain('rarity rare → legendary');

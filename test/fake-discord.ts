@@ -6,6 +6,9 @@ import type { Bot } from '../src/discord/runtime.js';
 import { route } from '../src/discord/router.js';
 import { resetCommandSync } from '../src/discord/commandSync.js';
 import { tickGuild } from '../src/discord/scheduler.js';
+import { PANELS, type Field, type Panel } from '../src/discord/panels.js';
+import { getChannels, getStaffRoles } from '../src/domain/config.js';
+import { getCurrentOrLatestEvent, type Feature } from '../src/domain/events.js';
 import { GUILD, makeCtx, type TestCtx } from './helpers.js';
 
 export interface Sent {
@@ -189,7 +192,7 @@ export class World {
         calls.push({ type: 'update', payload });
       },
       deferUpdate: async () => calls.push({ type: 'deferUpdate', payload: null }),
-      showModal: async (payload: any) => calls.push({ type: 'modal', payload: payload.toJSON() }),
+      showModal: async (payload: any) => calls.push({ type: 'modal', payload: payload.toJSON ? payload.toJSON() : payload }),
     };
     return i;
   }
@@ -246,6 +249,116 @@ export class World {
     i.fields = { getTextInputValue: (k: string) => fields[k] ?? '' };
     await route(this.bot, i);
     return i.calls as { type: string; payload: any }[];
+  }
+
+  /**
+   * Picks a menu action and submits its form, like a staff member would.
+   * Fields start with the values the form shows (Discord sends those back
+   * untouched), then `values` overrides them. Pickers take IDs.
+   */
+  async action(userId: string, panel: Panel['name'], actionId: string, values: Record<string, unknown> = {}, channelId = 'general') {
+    const action = PANELS[panel].actions.find((a) => a.id === actionId);
+    if (!action) throw new Error(`no action ${panel}/${actionId}`);
+    let fields: Field[] = [];
+    try {
+      fields = action.fields?.(this.bot, this.guild) ?? [];
+    } catch {
+      // The real menu would show this error; let the submit path report it.
+    }
+    if (!action.fields) return this.select(userId, `panel|${panel}`, [actionId], channelId);
+    const form: Record<string, unknown> = {};
+    for (const f of fields) {
+      if ((f.kind === 'text' || f.kind === 'number') && f.value !== undefined && f.value !== null && f.value !== '') form[f.id] = String(f.value);
+      if (f.kind === 'select') {
+        const d = (f.options as { value: string; default?: boolean }[]).find((o) => o.default) ?? f.options.find((o) => o.value === f.value);
+        if (d) form[f.id] = d.value;
+      }
+      if ((f.kind === 'channel' || f.kind === 'role') && f.value) form[f.id] = f.value;
+    }
+    for (const [k, v] of Object.entries(values)) {
+      if (v === null || v === undefined) delete form[k];
+      else form[k] = typeof v === 'boolean' ? (v ? 'yes' : 'no') : v;
+    }
+    const i = this.base(userId, channelId);
+    i.isModalSubmit = () => true;
+    i.isFromMessage = () => true;
+    i.customId = `act|${panel}|${actionId}`;
+    const ids = (k: string) => (k in form ? ([] as string[]).concat(form[k] as string | string[]) : null);
+    const pick = (k: string, from: Map<string, any>) => {
+      const list = ids(k);
+      return list ? new Map(list.map((id) => [id, from.get(id) ?? { id }])) : null;
+    };
+    const has = (k: string) => {
+      if (!(k in form)) throw new Error(`no field ${k}`);
+      return form[k];
+    };
+    i.fields = {
+      getTextInputValue: (k: string) => String(has(k)),
+      getStringSelectValues: (k: string) => [String(has(k))],
+      getSelectedChannels: (k: string) => pick(k, this.channels),
+      getSelectedRoles: (k: string) => pick(k, this.roles),
+      getSelectedUsers: (k: string) => pick(k, this.users),
+      getUploadedFiles: (k: string) => (k in form ? new Map([[`f${k}`, form[k]]]) : null),
+    };
+    await route(this.bot, i);
+    // A follow-up form comes behind a Continue button; press it.
+    const next = i.calls.map((c: any) => findCustomId(c.payload, 'om|')).find(Boolean);
+    if (next) return this.button(userId, next);
+    return i.calls as { type: string; payload: any }[];
+  }
+
+  /**
+   * Runs a staff action by its old slash-command name and options, e.g.
+   * `staff('owner', 'season halloween', { channel: 'spooky', wait_min: '30s' })`.
+   * Keeps the flow tests readable while going through the real menus.
+   */
+  async staff(userId: string, key: string, opts: Record<string, unknown> = {}) {
+    const o = { ...opts };
+    const run = async (panel: Panel['name'], id: string, values: Record<string, unknown>) => this.action(userId, panel, id, values);
+    const addChannel = (game: 'halloween' | 'snowball') => {
+      if (!('channel' in o)) return {};
+      const ch = o.channel as string;
+      delete o.channel;
+      return { channels: [...new Set([...getChannels(this.bot.ctx, GUILD, game), ch])] };
+    };
+    const [cmd, sub] = key.split(' ') as [string, string | undefined];
+    if (cmd === 'settings') {
+      if ('staff_role' in o) {
+        o.staff_roles = [...new Set([...getStaffRoles(this.bot.ctx, GUILD), o.staff_role as string])];
+        delete o.staff_role;
+      }
+      return run('settings', 'edit', o);
+    }
+    if (cmd === 'season' && sub === 'halloween') {
+      const timing = ['wait_min', 'wait_max', 'visit_length', 'delete_after'];
+      const candy = ['candy_per_win', 'daily_candy_limit'];
+      const pickOut = (keys: string[]) => Object.fromEntries(keys.filter((k) => k in o).map((k) => [k, o[k]]));
+      const base = { ...addChannel('halloween'), ...pickOut(['start', 'end', 'champion_role']) };
+      const calls: { type: string; payload: any }[] = [];
+      const t = pickOut(timing);
+      const c = pickOut(candy);
+      if (Object.keys(base).length || (!Object.keys(t).length && !Object.keys(c).length)) calls.push(...(await run('season', 'halloween', base)));
+      if (Object.keys(t).length) calls.push(...(await run('season', 'halloween-timing', t)));
+      if (Object.keys(c).length) calls.push(...(await run('season', 'halloween-candy', c)));
+      return calls;
+    }
+    if (cmd === 'season' && sub === 'snowball') return run('season', 'snowball', { ...addChannel('snowball'), ...o });
+    if (cmd === 'season' && sub === 'export') {
+      const ev = getCurrentOrLatestEvent(this.bot.ctx, GUILD, o.game as Feature);
+      return run('season', 'export', { season: ev?.id });
+    }
+    if (cmd === 'game' && sub === 'preview') {
+      const { game, ...rest } = o;
+      return run('season', `preview-${game}`, rest);
+    }
+    if (cmd === 'season' || cmd === 'game') return run('season', sub!, o);
+    if (cmd === 'adjust') return run('player', sub === 'candy' ? 'candy' : sub!, o);
+    if (cmd === 'player') return run('player', sub!, o);
+    if (cmd === 'visitor') {
+      if (o.visitor === '__placeholders__') o.visitor = 'placeholders';
+      return run('visitor', sub!, o);
+    }
+    throw new Error(`unknown staff action ${key}`);
   }
 
   tick() {

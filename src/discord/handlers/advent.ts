@@ -127,8 +127,8 @@ export function recoveryMessage(ev: SeasonEvent, doors: Door[]) {
 export async function showDoorForm(bot: Bot, i: ChatInput, ev: SeasonEvent, day: number, candy: number | null, reason: string | null) {
   if (ev.state === 'ended') throw new UserError('This Advent calendar has ended and its doors are frozen.');
   const cfg = getConfig(bot.ctx, i.guildId);
-  if (day > cfg.adventDoorCount) throw new UserError(`The calendar has ${cfg.adventDoorCount} doors. Change that with \`/season advent doors:\`.`);
-  if (ev.adventPublishedAt && !reason) throw new UserError('This calendar is already live. Add a `reason` so the change is logged.');
+  if (day > cfg.adventDoorCount) throw new UserError(`The calendar has ${cfg.adventDoorCount} doors. Change that with \`/season\` → **Set up the Advent Calendar**.`);
+  if (ev.adventPublishedAt && !reason) throw new UserError('This calendar is already live. Fill in **Reason** so the change is logged.');
   const existing = getDoor(bot.ctx, i.guildId, ev.id, day);
   const token = createPending(bot.ctx, i.guildId, i.user.id, 'advent.edit', {
     eventId: ev.id,
@@ -198,7 +198,7 @@ async function editSubmit(bot: Bot, i: Component, [token]: string[]) {
 /** A door exactly as members will see it, plus its schedule. Nothing is saved. */
 export function doorPreview(bot: Bot, guildId: string, ev: SeasonEvent, day: number) {
   const door = getDoor(bot.ctx, guildId, ev.id, day);
-  if (!door) throw new UserError(`Door ${day} is empty. Write it with \`/season door day:${day}\`.`);
+  if (!door) throw new UserError(`Door ${day} is empty. Write it with \`/season\` → **Write an Advent door**.`);
   const cfg = getConfig(bot.ctx, guildId);
   const t = doorTimes(ev, cfg, day);
   const e = doorEmbed(ev, door).addFields(

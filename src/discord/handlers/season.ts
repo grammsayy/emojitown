@@ -12,6 +12,7 @@ import {
   getTargetEvent,
   listEvents,
   resolveViewEvent,
+  SETUP_ACTION,
   windowFor,
   type Feature,
   type SeasonEvent,
@@ -41,7 +42,7 @@ export function stateLabel(ev: SeasonEvent): string {
 /** The event a staff command about `game` acts on: the running one, else the upcoming one. */
 export function requireTargetEvent(bot: Bot, guildId: string, game: Feature): SeasonEvent {
   const ev = getTargetEvent(bot.ctx, guildId, game);
-  if (!ev) throw new UserError(`${FEATURE_LABEL[game]} isn't set up yet. Run \`/season ${game}\` first.`);
+  if (!ev) throw new UserError(`${FEATURE_LABEL[game]} isn't set up yet. Run \`/season\` → **${SETUP_ACTION[game]}** first.`);
   return ev;
 }
 

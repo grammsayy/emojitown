@@ -7,14 +7,15 @@ import { COLORS, embed, field } from '../ui.js';
 
 /** Staff commands, shown in /help only to people who can use them. */
 const ADMIN_HELP = [
-  '`/settings` Server settings. Run it with no options for the setup checklist',
-  '`/season` Set up, start, end and announce games; write Advent doors; content files; wipe all items; export data',
-  '`/visitor` Create and edit Halloween visitors and their classes; mass-edit items with a spreadsheet',
-  '`/adjust` Give or take candy, undo a candy transaction, correct snowball stats',
+  '`/settings` Timezone, staff roles, log channel, support link, and the setup checklist',
+  '`/visitor` Add and edit Halloween visitors and their classes; mass-edit items with a spreadsheet',
+  '`/season` also: set up, start, end and announce games, Advent doors, content files, wipe all items, export',
+  '`/player` also: give or take candy, undo a candy transaction, correct snowball stats',
 ].join('\n');
 const STAFF_HELP = [
-  '`/game` Pause or resume a game, preview any message, send a visitor away, fix the Champion role, repost a door',
+  '`/season` Pause or resume a game, preview any message, send a visitor away, fix the Champion role, repost a door',
   "`/player` A member's history; give, remove or wipe their items; clear a snowball warm-up; exclude or include",
+  'Each opens a menu. Pick what to do and fill in the form.',
 ].join('\n');
 
 export const helpHandlers: HandlerSet = {
@@ -81,8 +82,8 @@ export const helpHandlers: HandlerSet = {
         });
       }
       const staffFields = [
-        ...(isAdmin(i.member) ? [field('🛠️ Admin commands (only you and other admins see this)', ADMIN_HELP)] : []),
         ...(isModerator(bot, i.member) ? [field('🧰 Event staff commands', STAFF_HELP)] : []),
+        ...(isAdmin(i.member) ? [field('🛠️ Admin commands (only admins see this)', ADMIN_HELP)] : []),
       ];
       return reply(i, {
         embeds: [

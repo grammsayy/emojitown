@@ -280,7 +280,7 @@ export function publishCalendar(ctx: Ctx, guildId: string, eventId: string, acto
   return tx(ctx, () => {
     const ev = requireEvent(ctx, guildId, eventId, 'advent');
     if (ev.state === 'ended') throw new UserError('This Advent event has ended.');
-    if (ev.adventPublishedAt) throw new UserError('This calendar is already published. Use `/season door` with a reason for corrections.');
+    if (ev.adventPublishedAt) throw new UserError('This calendar is already published. Use `/season` → **Write an Advent door** with a reason for corrections.');
     const issues = validateCalendar(ctx, guildId, eventId);
     if (issues.length) throw new UserError(`Fix these first:\n• ${issues.slice(0, 15).join('\n• ')}`);
     setEventState(ctx, ev, { advent_published_at: ctx.now() });

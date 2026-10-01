@@ -9,6 +9,7 @@ import { seasonHandlers } from '../src/discord/handlers/season.js';
 import { snowballHandlers } from '../src/discord/handlers/snowball.js';
 import { manageHandlers } from '../src/discord/handlers/manage.js';
 import { visitorHandlers } from '../src/discord/handlers/visitors.js';
+import { panelHandlers } from '../src/discord/panels.js';
 
 function keys(cmd: RESTPostAPIChatInputApplicationCommandsJSONBody): string[] {
   const subs = (cmd.options ?? []).filter(
@@ -25,7 +26,7 @@ function keys(cmd: RESTPostAPIChatInputApplicationCommandsJSONBody): string[] {
 describe('slash commands', () => {
   const json = commands.map((c) => c.toJSON());
   const commandKeys = json.flatMap(keys);
-  const handlerKeys = [snowballHandlers, halloweenHandlers, adventHandlers, candyHandlers, seasonHandlers, helpHandlers, manageHandlers, visitorHandlers].flatMap((h) => Object.keys(h.chat ?? {}));
+  const handlerKeys = [snowballHandlers, halloweenHandlers, adventHandlers, candyHandlers, seasonHandlers, helpHandlers, manageHandlers, visitorHandlers, panelHandlers].flatMap((h) => Object.keys(h.chat ?? {}));
 
   it('build, pass discord.js validation and fit Discord\'s 8000-character limit', () => {
     // Discord counts names, descriptions and choice names/values across the whole command tree.
@@ -45,15 +46,14 @@ describe('slash commands', () => {
   it('locks staff commands on Discord and leaves member commands open', () => {
     const manageGuild = PermissionFlagsBits.ManageGuild.toString();
     for (const c of json) {
-      if (['settings', 'season', 'visitor', 'adjust', 'game', 'player'].includes(c.name)) expect(c.default_member_permissions, c.name).toBe(manageGuild);
+      if (['settings', 'season', 'visitor', 'player'].includes(c.name)) expect(c.default_member_permissions, c.name).toBe(manageGuild);
       else expect(c.default_member_permissions ?? null, c.name).toBeNull();
     }
-    expect(levelFor('season halloween')).toBe('admin');
-    expect(levelFor('season end')).toBe('admin');
+    // /season and /player are open to event staff; their menus hide admin-only actions.
     expect(levelFor('settings')).toBe('admin');
-    expect(levelFor('adjust candy')).toBe('admin');
-    expect(levelFor('game pause')).toBe('moderator');
-    expect(levelFor('player wipe-items')).toBe('moderator');
+    expect(levelFor('visitor')).toBe('admin');
+    expect(levelFor('season')).toBe('moderator');
+    expect(levelFor('player')).toBe('moderator');
   });
 
   it('keeps commands flat: no subcommand groups anywhere', () => {

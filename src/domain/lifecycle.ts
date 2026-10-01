@@ -5,7 +5,7 @@ import { getChannel, getChannels, getConfig } from './config.js';
 import { getPack, latestVersion, validatePack } from './content.js';
 import { tx, type Ctx } from './context.js';
 import { UserError } from './errors.js';
-import { eventWindow, FEATURE_LABEL, getCurrentEvent, getEvent, listEvents, requireEvent, setEventState, type SeasonEvent } from './events.js';
+import { eventWindow, FEATURE_LABEL, getCurrentEvent, getEvent, listEvents, requireEvent, setEventState, SETUP_ACTION, type SeasonEvent } from './events.js';
 import { closeOpenEncounters, scheduleNextSpawn, type Encounter } from './halloween.js';
 
 export const SYSTEM_ACTOR = 'system';
@@ -33,12 +33,12 @@ export function checkEvent(ctx: Ctx, guildId: string, eventId: string): Readines
   if (running && running.id !== ev.id) errors.push(`\`${running.id}\` is already running. Only one ${FEATURE_LABEL[ev.feature]} event can run at a time.`);
 
   if (ev.feature === 'snowball' || ev.feature === 'halloween') {
-    if (getChannels(ctx, guildId, ev.feature).length === 0) errors.push(`No ${ev.feature} channel yet (\`/season ${ev.feature} channel:\`).`);
+    if (getChannels(ctx, guildId, ev.feature).length === 0) errors.push(`No ${ev.feature} channel yet (\`/season\` → **${SETUP_ACTION[ev.feature]}**).`);
     const version = ev.contentVersion ?? latestVersion(ctx, guildId, ev.feature);
     const result = validatePack(ev.feature, getPack(ctx, guildId, ev.feature, version));
     errors.push(...result.errors.map((e) => `Content: ${e}`));
     warnings.push(...result.warnings.slice(0, 5).map((w) => `Content: ${w}`));
-    if (version === 0) warnings.push(`Using the built-in placeholder ${ev.feature} content. Upload the emojitown pack with \`/season content\`.`);
+    if (version === 0) warnings.push(`Using the built-in placeholder ${ev.feature} content. Upload the emojitown pack with \`/season\` → **Content file**.`);
   }
   if (ev.feature === 'halloween') {
     if (!cfg.championRoleId) warnings.push('No Halloween Champion role is configured.');
@@ -46,7 +46,7 @@ export function checkEvent(ctx: Ctx, guildId: string, eventId: string): Readines
     if (weights <= 0) errors.push('Rarity weights must add up to more than zero.');
   }
   if (ev.feature === 'advent') {
-    if (!getChannel(ctx, guildId, 'advent')) errors.push('No Advent channel yet (`/season advent channel:`).');
+    if (!getChannel(ctx, guildId, 'advent')) errors.push('No Advent channel yet (`/season` → **Set up the Advent Calendar**).');
     const issues = validateCalendar(ctx, guildId, ev.id);
     errors.push(...issues.slice(0, 10));
     if (issues.length > 10) errors.push(`…and ${issues.length - 10} more calendar issues.`);
@@ -75,7 +75,7 @@ export function startEvent(ctx: Ctx, guildId: string, eventId: string, actorId: 
   return tx(ctx, () => {
     const ev = requireEvent(ctx, guildId, eventId);
     if (ev.state === 'active') throw new UserError('This event is already active.');
-    if (ev.state === 'paused') throw new UserError('This event is paused. Use `/game resume` instead.');
+    if (ev.state === 'paused') throw new UserError('This event is paused. Use `/season` → **Resume a paused game** instead.');
     const { errors } = checkEvent(ctx, guildId, eventId);
     const all = [...errors, ...extraErrors];
     if (all.length) throw new UserError(`This event isn't ready to start:\n• ${all.join('\n• ')}`);

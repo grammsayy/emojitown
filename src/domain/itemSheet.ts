@@ -100,7 +100,7 @@ export function planImport(ctx: Ctx, guildId: string, current: HalloweenPack, cs
   const required = ['item_id', 'visitor_name', 'item_name', 'item_rarity'];
   const missing = required.filter((h) => !headers.includes(h));
   if (missing.length) {
-    errors.push(`The sheet is missing these columns: ${missing.join(', ')}. Start from a file made by \`/visitor export\`.`);
+    errors.push(`The sheet is missing these columns: ${missing.join(', ')}. Start from a file made by \`/visitor\` → **Export items**.`);
     return { pack, errors, changes, counts };
   }
   if (rows.length === 0) errors.push('The sheet has no rows.');

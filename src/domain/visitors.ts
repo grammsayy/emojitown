@@ -72,7 +72,7 @@ export function addVisitor(ctx: Ctx, guildId: string, input: VisitorInput, actor
   if (!name) throw new UserError('The visitor needs a name.');
   const pack = currentPack(ctx, guildId);
   if (pack.visitors.some((v) => !v.retired && v.name.toLowerCase() === name.toLowerCase())) {
-    throw new UserError(`There is already a visitor called "${name}". Use \`/visitor edit\` to change it.`);
+    throw new UserError(`There is already a visitor called "${name}". Use \`/visitor\` → **Edit a visitor** to change it.`);
   }
   let id = slug(name);
   for (let n = 2; pack.visitors.some((v) => v.id === id); n++) id = `${slug(name)}-${n}`;
@@ -163,7 +163,7 @@ export function removeVisitors(ctx: Ctx, guildId: string, query: string, actorId
     }
   }
   if (!pack.visitors.some((v) => !v.retired)) {
-    throw new UserError('That would leave no visitors. Add your own first with `/visitor add`, then remove the placeholders.');
+    throw new UserError('That would leave no visitors. Add your own first with `/visitor` → **Add a visitor**, then remove the placeholders.');
   }
   savePack(ctx, guildId, pack, actorId, 'visitor.remove', { deleted, retired });
   return { deleted, retired };

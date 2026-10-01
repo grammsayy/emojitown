@@ -9,6 +9,13 @@ export type Feature = 'snowball' | 'halloween' | 'advent';
 export const FEATURES: Feature[] = ['snowball', 'halloween', 'advent'];
 export type EventState = 'draft' | 'scheduled' | 'active' | 'paused' | 'ended';
 
+/** The /season menu entry that sets up each game. */
+export const SETUP_ACTION: Record<Feature, string> = {
+  halloween: 'Set up Halloween',
+  snowball: 'Set up Snowball Fights',
+  advent: 'Set up the Advent Calendar',
+};
+
 export const FEATURE_LABEL: Record<Feature, string> = {
   snowball: 'Snowball Fights',
   halloween: 'Trick or Treat',
@@ -254,7 +261,7 @@ export function scheduleEvent(ctx: Ctx, guildId: string, eventId: string, input:
       throw new UserError('This event is already running, so only its end date can change.');
     }
     if ((ev.state === 'active' || ev.state === 'paused') && localToMs(endLocal, tz) <= ctx.now()) {
-      throw new UserError('A running event needs an end date in the future. Use `/season end` to end it now.');
+      throw new UserError('A running event needs an end date in the future. Use `/season` → **End a game** to end it now.');
     }
 
     let claimDeadlineLocal: string | null = null;

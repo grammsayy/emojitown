@@ -4,7 +4,7 @@ import { getClasses } from '../../domain/classes.js';
 import { getConfig } from '../../domain/config.js';
 import { fill, getPack } from '../../domain/content.js';
 import { UserError } from '../../domain/errors.js';
-import { getCurrentEvent, getCurrentOrLatestEvent, getTargetEvent, type Feature, type SeasonEvent } from '../../domain/events.js';
+import { getCurrentEvent, getCurrentOrLatestEvent, getTargetEvent, SETUP_ACTION, type Feature, type SeasonEvent } from '../../domain/events.js';
 import { packFor as halloweenPack, pickVisitor, rollItem, visitorClass, type Encounter } from '../../domain/halloween.js';
 import { packFor as snowballPack, WARMUP_MS, COLLECT_COOLDOWN_MS } from '../../domain/snowball.js';
 import { findVisitorByQuery } from '../../domain/visitors.js';
@@ -44,7 +44,7 @@ const errorStyle = (text: string): Payload => ({ embeds: [embed(COLORS.warn, und
 
 function eventFor(t: TestCtx, game: Feature): SeasonEvent {
   const ev = getTargetEvent(t.bot.ctx, t.i.guildId, game) ?? getCurrentOrLatestEvent(t.bot.ctx, t.i.guildId, game);
-  if (!ev) throw new UserError(`There is no ${game} season yet, so this message has nothing to show. Run \`/season ${game}\` first.`);
+  if (!ev) throw new UserError(`There is no ${game} season yet, so this message has nothing to show. Run \`/season\` → **${SETUP_ACTION[game]}** first.`);
   return ev;
 }
 
@@ -164,7 +164,7 @@ function adventDoor(t: TestCtx) {
   const doors = listDoors(t.bot.ctx, t.i.guildId, ev.id);
   const day = t.day ?? doors[0]?.day;
   const door = day ? getDoor(t.bot.ctx, t.i.guildId, ev.id, day) : null;
-  if (!door) throw new UserError(day ? `Door ${day} is empty. Write it with \`/season door day:${day}\`.` : 'No doors are written yet. Start with `/season door day:1`.');
+  if (!door) throw new UserError(day ? `Door ${day} is empty. Write it with \`/season\` → **Write an Advent door**.` : 'No doors are written yet. Start with `/season` → **Write an Advent door**.');
   const cfg = getConfig(t.bot.ctx, t.i.guildId);
   return { ev, door, doors, cfg, times: doorTimes(ev, cfg, door.day) };
 }
@@ -202,17 +202,6 @@ const ADVENT: TestMessage[] = [
 export const TEST_MESSAGES: Record<Feature, TestMessage[]> = { halloween: HALLOWEEN, snowball: SNOWBALL, advent: ADVENT };
 export const ALL_MESSAGES = 'all';
 
-/** `message` autocomplete for the chosen game. */
-export function messageChoices(game: string | null, query: string) {
-  const list = TEST_MESSAGES[game as Feature];
-  if (!list) return [{ name: 'Pick a game first', value: ALL_MESSAGES }];
-  const q = query.toLowerCase();
-  return [{ id: ALL_MESSAGES, label: `All ${list.length} messages` }, ...list]
-    .filter((m) => m.label.toLowerCase().includes(q) || m.id.includes(q))
-    .slice(0, 25)
-    .map((m) => ({ name: m.label, value: m.id }));
-}
-
 /** Buttons and menus in a test are shown but switched off, so nothing can be clicked by accident. */
 function disabled(components: readonly unknown[] | undefined): APIActionRowComponent<APIComponentInActionRow>[] {
   return (components ?? []).map((r) => {
@@ -221,7 +210,7 @@ function disabled(components: readonly unknown[] | undefined): APIActionRowCompo
   });
 }
 
-/** `/game preview`: shows any member-facing message with real content. Nothing is saved. */
+/** `/season` → Preview messages: shows any member-facing message with real content. Nothing is saved. */
 export async function messageTest(bot: Bot, i: ChatInput) {
   const game = i.options.getString('game', true) as Feature;
   const which = i.options.getString('message', true);
@@ -248,7 +237,7 @@ export async function messageTest(bot: Bot, i: ChatInput) {
       allowedMentions: { parse: [] as [] },
     };
     if (first && !isPublic) await reply(i, message as never);
-    else if (first) await i.reply(message as never);
+    else if (first) await (i.replied || i.deferred ? i.followUp(message as never) : i.reply(message as never));
     else await i.followUp({ ...message, ...(isPublic ? {} : { flags: MessageFlags.Ephemeral }) } as never);
     first = false;
   }

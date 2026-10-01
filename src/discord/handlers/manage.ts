@@ -1,4 +1,4 @@
-import { AttachmentBuilder, type GuildTextBasedChannel } from 'discord.js';
+import { AttachmentBuilder, type Guild, type GuildTextBasedChannel } from 'discord.js';
 import { listDoors } from '../../domain/advent.js';
 import { audit } from '../../domain/audit.js';
 import { addChannel, getChannel, getChannels, getConfig, getStaffRoles, removeChannel, setStaffRole, updateConfig, type GuildConfig } from '../../domain/config.js';
@@ -25,7 +25,7 @@ import { exclude, include, type ExclusionScope } from '../../domain/members.js';
 import { clearWarmup, getPlayer } from '../../domain/snowball.js';
 import type { ContentFeature } from '../../content/types.js';
 import { addDays, formatSeconds, isValidZone, parseDate, parseDuration, parseTime } from '../../util/time.js';
-import { askConfirm, reply, type ChatInput, type HandlerSet } from '../interaction.js';
+import { askConfirm, reply, type ChatHandler, type ChatInput, type HandlerSet } from '../interaction.js';
 import { describeDiff, syncGuildCommands } from '../commandSync.js';
 import { discordChecks, featureChannelIds } from '../results.js';
 import { assertLevel, assertSafeStaffRole, syncChampionRole, type Bot } from '../runtime.js';
@@ -45,6 +45,16 @@ function dateRange(ev: SeasonEvent): string {
   return `${ev.startLocal.slice(0, 10)} → ${addDays(ev.endLocal.slice(0, 10), -1)}`;
 }
 
+function roleList(ids: string[]): string {
+  return ids.map((r) => `<@&${r}>`).join(', ') || 'none';
+}
+
+/** IDs from a multi-select form field, or null when the form didn't have that field. */
+function idsOption(i: ChatInput, name: string): string[] | null {
+  const opts = i.options as unknown as { getIds?: (n: string) => string[] | null };
+  return opts.getIds ? opts.getIds(name) : null;
+}
+
 function channelList(ids: string[]): string {
   return ids.map((c) => `<#${c}>`).join(', ') || 'none';
 }
@@ -62,8 +72,12 @@ function readinessFields(errors: string[], warnings: string[]) {
 }
 
 async function readiness(bot: Bot, i: ChatInput, ev: SeasonEvent) {
-  const r = checkEvent(bot.ctx, i.guildId, ev.id);
-  const d = await discordChecks(bot, i.guild, ev.feature);
+  return readinessFor(bot, i.guild, ev);
+}
+
+async function readinessFor(bot: Bot, guild: Guild, ev: SeasonEvent) {
+  const r = checkEvent(bot.ctx, guild.id, ev.id);
+  const d = await discordChecks(bot, guild, ev.feature);
   return { errors: [...r.errors, ...d.errors], warnings: [...r.warnings, ...d.warnings] };
 }
 
@@ -87,12 +101,17 @@ async function startIfDue(bot: Bot, i: ChatInput, ev: SeasonEvent): Promise<stri
 async function setupServer(bot: Bot, i: ChatInput) {
   const zone = i.options.getString('timezone');
   if (zone && !isValidZone(zone)) throw new UserError(`\`${zone}\` isn't a timezone I know. Pick one from the list, e.g. Europe/Copenhagen.`);
-  const staffRole = i.options.getRole('staff_role');
-  const removeRole = i.options.getRole('remove_staff_role');
+  // The form shows the current staff roles preselected; whatever is selected on submit becomes the list.
+  const wanted = idsOption(i, 'staff_roles');
+  const current = getStaffRoles(bot.ctx, i.guildId);
+  const addRoles = wanted ? wanted.filter((r) => !current.includes(r)).map((r) => i.guild.roles.cache.get(r)!).filter(Boolean) : [];
+  const dropRoles = wanted ? current.filter((r) => !wanted.includes(r)) : [];
   const logs = i.options.getChannel('log_channel');
   const support = i.options.getString('support');
-  if (staffRole) assertSafeStaffRole(i.guild, staffRole);
-  if (staffRole && staffRole.id === getConfig(bot.ctx, i.guildId).championRoleId) throw new UserError('That is the Halloween Champion role. Pick a staff role.');
+  for (const role of addRoles) {
+    assertSafeStaffRole(i.guild, role);
+    if (role.id === getConfig(bot.ctx, i.guildId).championRoleId) throw new UserError('That is the Halloween Champion role. Pick a staff role.');
+  }
 
   const changes: string[] = [];
   const before = getConfig(bot.ctx, i.guildId);
@@ -112,8 +131,11 @@ async function setupServer(bot: Bot, i: ChatInput) {
       const previous = addChannel(bot.ctx, i.guildId, 'logs', logs.id);
       if (previous[0] !== logs.id) changes.push(`**Log channel:** ${previous[0] ? `<#${previous[0]}>` : 'none'} → ${logs}`);
     }
-    if (staffRole && setStaffRole(bot.ctx, i.guildId, staffRole.id, true)) changes.push(`**Staff roles:** added ${staffRole}`);
-    if (removeRole && setStaffRole(bot.ctx, i.guildId, removeRole.id, false)) changes.push(`**Staff roles:** removed ${removeRole}`);
+    if (addRoles.length || dropRoles.length) {
+      for (const role of addRoles) setStaffRole(bot.ctx, i.guildId, role.id, true);
+      for (const id of dropRoles) setStaffRole(bot.ctx, i.guildId, id, false);
+      changes.push(`**Staff roles:** ${roleList(current)} → ${roleList(getStaffRoles(bot.ctx, i.guildId))}`);
+    }
     if (changes.length) audit(bot.ctx, { guildId: i.guildId, actorId: i.user.id, action: 'setup.server', after: { changes } });
   });
 
@@ -124,15 +146,15 @@ async function setupServer(bot: Bot, i: ChatInput) {
     field('Log channel', getChannel(bot.ctx, i.guildId, 'logs') ? `<#${getChannel(bot.ctx, i.guildId, 'logs')}>` : 'none', true),
     field('Support link', cfg.supportDestination ?? 'none', true),
   );
-  if (staffRole && changes.some((c) => c.includes('added'))) {
+  if (addRoles.length) {
     e.addFields(
       field(
         'One more step',
-        `So ${staffRole} can see the staff commands: **Server Settings → Integrations → emojitown**, open \`/game\` and \`/player\`, and add the role to each.`,
+        `So ${addRoles.join(', ')} can see the staff commands: **Server Settings → Integrations → emojitown**, open \`/season\` and \`/player\`, and add the role to each.`,
       ),
     );
   }
-  e.addFields(field('Next', 'Set up a game: `/season halloween`, `/season snowball` or `/season advent`. Run `/settings` with no options for the checklist.'));
+  e.addFields(field('Next', 'Set up a game with `/season`.'));
   await reply(i, { embeds: [e] });
 }
 
@@ -200,6 +222,7 @@ async function setupGame(bot: Bot, i: ChatInput, game: Feature) {
   const championRole = game === 'halloween' ? o.getRole('champion_role') : null;
   const channel = o.getChannel('channel');
   const removeCh = game === 'advent' ? null : o.getChannel('remove_channel');
+  const wantedChannels = game === 'advent' ? null : idsOption(i, 'channels');
 
   const LABELS: Partial<Record<keyof GuildConfig, [string, (v: any) => string]>> = {
     hwSpawnMinS: ['Shortest wait between visitors', formatSeconds],
@@ -225,6 +248,14 @@ async function setupGame(bot: Bot, i: ChatInput, game: Feature) {
         addChannel(bot.ctx, i.guildId, game, channel.id);
         changes.push(`**Channels:** ${channelList(previous)} → ${channelList(getChannels(bot.ctx, i.guildId, game))}`);
       }
+    }
+    if (wantedChannels) {
+      const g = game as 'halloween' | 'snowball';
+      const previous = getChannels(bot.ctx, i.guildId, g);
+      for (const id of wantedChannels) if (!previous.includes(id)) addChannel(bot.ctx, i.guildId, g, id);
+      for (const id of previous) if (!wantedChannels.includes(id)) removeChannel(bot.ctx, i.guildId, g, id);
+      const now = getChannels(bot.ctx, i.guildId, g);
+      if (now.join() !== previous.join()) changes.push(`**Channels:** ${channelList(previous)} → ${channelList(now)}`);
     }
     if (removeCh && getChannels(bot.ctx, i.guildId, game as 'halloween' | 'snowball').includes(removeCh.id)) {
       const previous = getChannels(bot.ctx, i.guildId, game as 'halloween' | 'snowball');
@@ -332,7 +363,7 @@ async function setupContent(bot: Bot, i: ChatInput) {
   if (!file) {
     const pack = getPack(bot.ctx, i.guildId, game);
     await reply(i, {
-      content: `Here is the current ${FEATURE_LABEL[game]} content (${label(version)}). Edit it and upload it back with \`/season content game:${game} file:\`. Nothing changed.`,
+      content: `Here is the current ${FEATURE_LABEL[game]} content (${label(version)}). Edit it and upload it back with \`/season\` → **Content file**. Nothing changed.`,
       files: [new AttachmentBuilder(Buffer.from(JSON.stringify(pack, null, 2)), { name: `${game}-content.json` })],
     });
     return;
@@ -363,22 +394,29 @@ async function setupContent(bot: Bot, i: ChatInput) {
 }
 
 async function setupStatus(bot: Bot, i: ChatInput) {
+  await reply(i, { embeds: [await statusEmbed(bot, i.guild, true)] });
+}
+
+/** Setup checklist: the server basics (optional) and each game's state and readiness. */
+export async function statusEmbed(bot: Bot, guild: Guild, withServer: boolean) {
+  const i = { guildId: guild.id, guild };
   const cfg = getConfig(bot.ctx, i.guildId);
-  const e = embed(COLORS.staff, '🩺 emojitown setup status').addFields(
+  const e = embed(COLORS.staff, withServer ? '⚙️ emojitown settings' : '🗓️ emojitown seasons');
+  if (withServer) e.addFields(
     field(
       'Server',
       [
         `${cfg.timezoneSet ? '✅' : '⚠️'} Timezone: ${cfg.timezoneSet ? cfg.timezone : 'not set (UTC)'}`,
         `${getStaffRoles(bot.ctx, i.guildId).length ? '✅' : '⚠️'} Staff roles: ${getStaffRoles(bot.ctx, i.guildId).map((r) => `<@&${r}>`).join(', ') || 'none'}`,
         `${getChannel(bot.ctx, i.guildId, 'logs') ? '✅' : '⚠️'} Log channel: ${getChannel(bot.ctx, i.guildId, 'logs') ? `<#${getChannel(bot.ctx, i.guildId, 'logs')}>` : 'none'}`,
-        `Fix with \`/settings\`.`,
+        `Support link: ${cfg.supportDestination ?? 'none'}`,
       ].join('\n'),
     ),
   );
   for (const game of ['halloween', 'snowball', 'advent'] as Feature[]) {
     const ev = getCurrentEvent(bot.ctx, i.guildId, game) ?? listEvents(bot.ctx, i.guildId, game).find((x) => x.state === 'draft' || x.state === 'scheduled');
     if (!ev) {
-      e.addFields(field(`${GAME_ICON[game]} ${FEATURE_LABEL[game]}`, `Not set up. Run \`/season ${game}\`.`));
+      e.addFields(field(`${GAME_ICON[game]} ${FEATURE_LABEL[game]}`, 'Not set up yet.'));
       continue;
     }
     const win = windowFor(bot.ctx, ev);
@@ -386,18 +424,18 @@ async function setupStatus(bot: Bot, i: ChatInput) {
     if (game === 'halloween' && ev.state === 'active') lines.push(visitorStatusText(bot, i.guildId));
     if (game !== 'advent') {
       const v = ev.contentVersion ?? latestVersion(bot.ctx, i.guildId, game);
-      lines.push(v === 0 ? '⚠️ Using placeholder content (`/season content`)' : `Content: v${v}`);
+      lines.push(v === 0 ? '⚠️ Using placeholder content (`/season` → **Content file**)' : `Content: v${v}`);
     } else {
       lines.push(`Doors written: ${listDoors(bot.ctx, i.guildId, ev.id).length}/${cfg.adventDoorCount}`);
     }
     if (ev.state !== 'active' && ev.state !== 'ended') {
-      const r = await readiness(bot, i, ev);
+      const r = await readinessFor(bot, guild, ev);
       lines.push(...r.errors.slice(0, 5).map((x) => `❌ ${x}`), ...r.warnings.slice(0, 3).map((x) => `⚠️ ${x}`));
       if (!r.errors.length) lines.push('✅ Ready');
     }
     e.addFields(field(`${GAME_ICON[game]} ${FEATURE_LABEL[game]}`, lines.join('\n')));
   }
-  await reply(i, { embeds: [e] });
+  return e;
 }
 
 // ── /season start | end | announce | export | wipe-items ───────────────────────────────────────────────────────────
@@ -407,7 +445,7 @@ const game = (i: ChatInput) => i.options.getString('game', true) as Feature;
 async function adminStart(bot: Bot, i: ChatInput) {
   const ev = requireTargetEvent(bot, i.guildId, game(i));
   if (ev.state === 'active') return reply(i, `**${ev.name}** is already live. Nothing changed.`);
-  if (ev.state === 'paused') throw new UserError(`**${ev.name}** is paused. Use \`/game resume game:${ev.feature}\` instead.`);
+  if (ev.state === 'paused') throw new UserError(`**${ev.name}** is paused. Use \`/season\` → **Resume a paused game** instead.`);
   const d = await discordChecks(bot, i.guild, ev.feature);
   const started = startEvent(bot.ctx, i.guildId, ev.id, i.user.id, d.errors);
   if (started.feature === 'halloween') void syncChampionRole(bot, i.guildId);
@@ -479,7 +517,7 @@ async function askWipe(bot: Bot, i: ChatInput, everyone: boolean) {
       [
         `This deletes ${who}: **${row.items}** owned item${row.items === 1 ? '' : 's'}.`,
         'Candy already earned is kept. The Champion is recalculated.',
-        "**This can't be undone** (items can only be given back one at a time with `/player give-item`).",
+        "**This can't be undone** (items can only be given back one at a time with `/player` → **Give an item**).",
       ].join('\n'),
     ),
   );
@@ -501,7 +539,7 @@ async function adminAnnounce(bot: Bot, i: ChatInput) {
 
 async function adminExport(bot: Bot, i: ChatInput) {
   const season = i.options.getString('season');
-  const ev = season ? requireEvent(bot.ctx, i.guildId, season, game(i)) : (getCurrentOrLatestEvent(bot.ctx, i.guildId, game(i)) ?? requireTargetEvent(bot, i.guildId, game(i)));
+  const ev = season ? requireEvent(bot.ctx, i.guildId, season) : (getCurrentOrLatestEvent(bot.ctx, i.guildId, game(i)) ?? requireTargetEvent(bot, i.guildId, game(i)));
   audit(bot.ctx, { guildId: i.guildId, actorId: i.user.id, action: 'export', eventId: ev.id });
   await reply(i, { content: `All data for **${ev.name}** (staff only, handle with care):`, files: [exportFile(bot, i.guildId, ev)] });
 }
@@ -514,7 +552,7 @@ async function modPause(bot: Bot, i: ChatInput) {
   if (ev.state === 'paused') return reply(i, `**${ev.name}** is already paused. Nothing changed.`);
   const { event, closed } = pauseEvent(bot.ctx, i.guildId, ev.id, i.options.getString('reason', true), i.user.id);
   for (const enc of closed) await syncEncounterMessage(bot, i.guild, enc);
-  await reply(i, `**${event.name}:** 🟢 live → ⏸️ paused. Progress is kept; nothing new happens until \`/game resume\`.`);
+  await reply(i, `**${event.name}:** 🟢 live → ⏸️ paused. Progress is kept; nothing new happens until \`/season\` → **Resume a paused game**.`);
 }
 
 async function modResume(bot: Bot, i: ChatInput) {
@@ -531,7 +569,7 @@ async function modExclude(bot: Bot, i: ChatInput, on: boolean) {
   const changed = on ? exclude(bot.ctx, i.guildId, member.id, scope, reason, i.user.id) : include(bot.ctx, i.guildId, member.id, scope, reason, i.user.id);
   if (changed.includes('halloween')) void syncChampionRole(bot, i.guildId);
   const lines = changed.map((f) => `**${member} in ${FEATURE_LABEL[f]}:** ${on ? 'playing → excluded' : 'excluded → playing'}`);
-  await reply(i, `${lines.join('\n')}\n${on ? 'Their progress is kept. Candy is unchanged (an admin can use `/adjust candy` with a negative amount if needed).' : 'Standings were recalculated.'}`);
+  await reply(i, `${lines.join('\n')}\n${on ? 'Their progress is kept. Candy is unchanged (an admin can use `/player` → **Give or take candy** with a negative amount if needed).' : 'Standings were recalculated.'}`);
 }
 
 async function modRepostDoor(bot: Bot, i: ChatInput) {
@@ -543,51 +581,48 @@ async function modRepostDoor(bot: Bot, i: ChatInput) {
   await reply(i, `Door ${day} announcement posted again: ${url}. Nobody's claims changed.`);
 }
 
-/** `/settings`: changes whatever options were given; with none, shows the setup checklist. */
-async function settings(bot: Bot, i: ChatInput) {
-  if (i.options.data.length === 0) return setupStatus(bot, i);
-  return setupServer(bot, i);
-}
+/** Staff actions, run from the /settings, /season and /player menus (see panels.ts). */
+export const manageActions: Record<string, ChatHandler> = {
+  'settings edit': setupServer,
+  'settings status': setupStatus,
+
+  'season halloween': (bot, i) => setupGame(bot, i, 'halloween'),
+  'season snowball': (bot, i) => setupGame(bot, i, 'snowball'),
+  'season advent': (bot, i) => setupGame(bot, i, 'advent'),
+  'season door': setupDoor,
+  'season content': setupContent,
+  'season start': adminStart,
+  'season end': adminEnd,
+  'season announce': adminAnnounce,
+  'season wipe-items': (bot, i) => askWipe(bot, i, true),
+  'season export': adminExport,
+
+  'adjust candy': (bot, i) => askGiveCandy(bot, i, i.options.getUser('member', true), i.options.getInteger('amount', true), i.options.getString('reason', true)),
+  'adjust undo-candy': (bot, i) => askUndoCandy(bot, i, i.options.getInteger('transaction', true), i.options.getString('reason', true)),
+  'adjust snowball-stats': adminFixStats,
+
+  'game pause': modPause,
+  'game resume': modResume,
+  'game preview': messageTest,
+  'game send-visitor-away': async (bot, i) => reply(i, await cancelVisitor(bot, i, i.options.getString('reason', true))),
+  'game fix-champion': async (bot, i) => reply(i, { embeds: [await fixRole(bot, i)] }),
+  'game repost-door': modRepostDoor,
+
+  'player history': async (bot, i) => {
+    const u = i.options.getUser('member');
+    if (!u) return reply(i, { embeds: [auditEmbed(bot, i.guildId, null)] });
+    const h = historyView(bot, i.guildId, u.id, 1, null);
+    await reply(i, { ...h, embeds: [...h.embeds, auditEmbed(bot, i.guildId, u.id)] });
+  },
+  'player give-item': (bot, i) => playerItem(bot, i, 'grant'),
+  'player remove-item': (bot, i) => playerItem(bot, i, 'revoke'),
+  'player wipe-items': (bot, i) => askWipe(bot, i, false),
+  'player clear-warmup': adminClearWarmup,
+  'player exclude': (bot, i) => modExclude(bot, i, true),
+  'player include': (bot, i) => modExclude(bot, i, false),
+};
 
 export const manageHandlers: HandlerSet = {
-  chat: {
-    settings,
-
-    'season halloween': (bot, i) => setupGame(bot, i, 'halloween'),
-    'season snowball': (bot, i) => setupGame(bot, i, 'snowball'),
-    'season advent': (bot, i) => setupGame(bot, i, 'advent'),
-    'season door': setupDoor,
-    'season content': setupContent,
-    'season start': adminStart,
-    'season end': adminEnd,
-    'season announce': adminAnnounce,
-    'season wipe-items': (bot, i) => askWipe(bot, i, true),
-    'season export': adminExport,
-
-    'adjust candy': (bot, i) => askGiveCandy(bot, i, i.options.getUser('member', true), i.options.getInteger('amount', true), i.options.getString('reason', true)),
-    'adjust undo-candy': (bot, i) => askUndoCandy(bot, i, i.options.getInteger('transaction', true), i.options.getString('reason', true)),
-    'adjust snowball-stats': adminFixStats,
-
-    'game pause': modPause,
-    'game resume': modResume,
-    'game preview': messageTest,
-    'game send-visitor-away': async (bot, i) => reply(i, await cancelVisitor(bot, i, i.options.getString('reason', true))),
-    'game fix-champion': async (bot, i) => reply(i, { embeds: [await fixRole(bot, i)] }),
-    'game repost-door': modRepostDoor,
-
-    'player history': async (bot, i) => {
-      const u = i.options.getUser('member');
-      if (!u) return reply(i, { embeds: [auditEmbed(bot, i.guildId, null)] });
-      const h = historyView(bot, i.guildId, u.id, 1, null);
-      await reply(i, { ...h, embeds: [...h.embeds, auditEmbed(bot, i.guildId, u.id)] });
-    },
-    'player give-item': (bot, i) => playerItem(bot, i, 'grant'),
-    'player remove-item': (bot, i) => playerItem(bot, i, 'revoke'),
-    'player wipe-items': (bot, i) => askWipe(bot, i, false),
-    'player clear-warmup': adminClearWarmup,
-    'player exclude': (bot, i) => modExclude(bot, i, true),
-    'player include': (bot, i) => modExclude(bot, i, false),
-  },
   confirms: {
     'halloween.wipe': {
       level: 'moderator',

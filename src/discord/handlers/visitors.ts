@@ -21,7 +21,7 @@ import {
   type VisitorInput,
 } from '../../domain/visitors.js';
 import { storeAttachedImage } from '../images.js';
-import { askConfirm, reply, type Button, type ChatInput, type Component, type HandlerSet, type Modal } from '../interaction.js';
+import { askConfirm, reply, type Button, type ChatHandler, type ChatInput, type Component, type HandlerSet, type Modal } from '../interaction.js';
 import { assertLevel, type Bot } from '../runtime.js';
 import { cid, COLORS, embed, field, pager, truncate } from '../ui.js';
 import { halloweenPreview } from './halloween.js';
@@ -41,9 +41,13 @@ function classLine(bot: Bot, guildId: string, cls: Rarity): string {
   return `${CLASS_LABEL[cls]}${bonus ? ` (+${bonus} bonus candy)` : ''}`;
 }
 
+/** Typing this in the picture link field removes the picture. */
+const REMOVE_PICTURE = /^(none|remove|delete|-)$/i;
+
 function pictureOptions(i: ChatInput): Pick<FormPayload, 'picture' | 'pictureUrl'> {
   const att = i.options.getAttachment('picture');
-  const url = i.options.getString('picture_url');
+  const raw = i.options.getString('picture_url');
+  const url = raw && REMOVE_PICTURE.test(raw.trim()) ? null : raw;
   if (att && url) throw new UserError('Use either `picture` or `picture_url`, not both.');
   if (att && att.contentType && !/^image\/(png|jpe?g|gif|webp)/.test(att.contentType)) throw new UserError('The picture must be PNG, JPG, GIF or WEBP.');
   if (url && !/^https?:\/\/\S+$/.test(url.trim())) throw new UserError('`picture_url` must be a link starting with https://');
@@ -80,7 +84,8 @@ async function add(bot: Bot, i: ChatInput) {
 async function edit(bot: Bot, i: ChatInput) {
   const v = findVisitorByQuery(currentPack(bot.ctx, i.guildId), i.options.getString('visitor', true));
   const pics = pictureOptions(i);
-  const removePicture = i.options.getBoolean('remove_picture') ?? false;
+  const raw = i.options.getString('picture_url');
+  const removePicture = (i.options.getBoolean('remove_picture') ?? false) || (!!raw && REMOVE_PICTURE.test(raw.trim()));
   if (removePicture && (pics.picture || pics.pictureUrl)) throw new UserError('Either give a new picture or remove it, not both.');
   await showForm(
     bot,
@@ -149,7 +154,7 @@ async function submitForm(bot: Bot, i: Component, [token]: string[]) {
   const placeholders = activeVisitors(pack).filter(isPlaceholder).length;
   const tail =
     `\n**Active visitors:** ${activeVisitors(pack).length}` +
-    (placeholders ? ` (${placeholders} are built-in placeholders: remove them with \`/visitor remove visitor:All placeholder visitors\`)` : '');
+    (placeholders ? ` (${placeholders} are built-in placeholders: remove them with \`/visitor\` → Remove a visitor → type \`placeholders\`)` : '');
   const preview = halloweenPreview(bot, m.guildId, m.channelId ?? '', m.user.id, visitor.id);
   await reply(m, {
     content: `${changes.length ? `**What changed**\n${changes.join('\n')}` : '**Nothing changed.**'}${tail}\nThis is how it looks to members:`,
@@ -159,7 +164,9 @@ async function submitForm(bot: Bot, i: Component, [token]: string[]) {
 }
 
 async function remove(bot: Bot, i: ChatInput) {
-  const { deleted, retired } = removeVisitors(bot.ctx, i.guildId, i.options.getString('visitor', true), i.user.id);
+  const query = i.options.getString('visitor', true);
+  const which = /^all( placeholder( visitors)?)?$|^placeholders$/i.test(query.trim()) ? ALL_PLACEHOLDERS : query;
+  const { deleted, retired } = removeVisitors(bot.ctx, i.guildId, which, i.user.id);
   const lines: string[] = [];
   if (deleted.length) lines.push(`**Removed:** ${truncate(deleted.join(', '), 900)}`);
   if (retired.length) lines.push(`**Retired:** ${truncate(retired.join(', '), 900)} (no longer appear; members keep what they collected)`);
@@ -180,8 +187,8 @@ function listView(bot: Bot, guildId: string, page: number) {
   }).join('\n');
   const p = paginate(active, page, 20);
   const lines = p.items.map((v) => `${CLASS_LABEL[visitorClass(v)].split(' ')[0]} **${v.name}**${v.image ? ' 🖼️' : ''}${isPlaceholder(v) ? ' *(placeholder)*' : ''}`);
-  const e = embed(COLORS.halloween, `👻 Visitors (${active.length})`, lines.join('\n') || 'No visitors. Add one with `/visitor add`.').addFields(
-    field('Classes (`/visitor class` to change)', summary),
+  const e = embed(COLORS.halloween, `👻 Visitors (${active.length})`, lines.join('\n') || 'No visitors yet. Add one with `/visitor` → Add a visitor.').addFields(
+    field('Classes (`/visitor` → Visitor classes to change)', summary),
   );
   return { embeds: [e], components: p.pages > 1 ? [pager(p, (n) => cid('vlist', n))] : [] };
 }
@@ -206,18 +213,6 @@ async function setupClass(bot: Bot, i: ChatInput) {
   });
 }
 
-/** Visitor names for `/visitor edit|remove` autocomplete, from the latest content. */
-export function visitorAdminChoices(bot: Bot, guildId: string, query: string, forRemove: boolean) {
-  const active = activeVisitors(currentPack(bot.ctx, guildId));
-  const q = query.toLowerCase();
-  const choices = active
-    .filter((v) => v.name.toLowerCase().includes(q) || v.id.includes(q))
-    .map((v) => ({ name: truncate(`${v.name} (${visitorClass(v)})`, 100), value: v.id }));
-  const placeholders = active.filter(isPlaceholder).length;
-  if (forRemove && placeholders) choices.unshift({ name: `All placeholder visitors (${placeholders})`, value: ALL_PLACEHOLDERS });
-  return choices.slice(0, 25);
-}
-
 const FILTER_LABEL: Record<SheetFilter, string> = Object.fromEntries(SHEET_FILTERS.map((f) => [f.value, f.name])) as Record<SheetFilter, string>;
 
 async function exportItems(bot: Bot, i: ChatInput) {
@@ -229,7 +224,7 @@ async function exportItems(bot: Bot, i: ChatInput) {
       `**${count} ${FILTER_LABEL[filter].toLowerCase()} item${count === 1 ? '' : 's'}**, one per row. Nothing changed.\n` +
       '**How to edit:** open the file in Google Sheets (File → Import → Upload) or Excel (Data → From Text/CSV, UTF-8). ' +
       'Change names, rarities, descriptions, picture links or texts. **Don\'t change `item_id` or `visitor_id`.** ' +
-      'To add an item or visitor, add a row with `item_id` empty. Save as CSV (in Excel: **CSV UTF-8**) and upload it with `/visitor import`.',
+      'To add an item or visitor, add a row with `item_id` empty. Save as CSV (in Excel: **CSV UTF-8**) and upload it with `/visitor` → Import items.',
     files: [new AttachmentBuilder(Buffer.from(csv, 'utf8'), { name: `halloween-items-${filter}.csv` })],
   });
 }
@@ -270,16 +265,18 @@ async function importItems(bot: Bot, i: ChatInput) {
   await askConfirm(bot, i, 'visitor.import', { csvText }, embed(COLORS.warn, `Apply these changes? ${summary(plan)}`, changeList(plan)));
 }
 
+/** Visitor actions, run from the /visitor menu (see panels.ts). */
+export const visitorActions: Record<string, ChatHandler> = {
+  'visitor add': add,
+  'visitor edit': edit,
+  'visitor remove': remove,
+  'visitor list': (bot, i) => reply(i, listView(bot, i.guildId, 1)),
+  'visitor class': setupClass,
+  'visitor export': exportItems,
+  'visitor import': importItems,
+};
+
 export const visitorHandlers: HandlerSet = {
-  chat: {
-    'visitor add': add,
-    'visitor edit': edit,
-    'visitor remove': remove,
-    'visitor list': (bot, i) => reply(i, listView(bot, i.guildId, 1)),
-    'visitor class': setupClass,
-    'visitor export': exportItems,
-    'visitor import': importItems,
-  },
   confirms: {
     'visitor.import': {
       level: 'admin',
