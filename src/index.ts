@@ -7,7 +7,7 @@ import { getChannels } from './domain/config.js';
 import type { Ctx } from './domain/context.js';
 import { recordActivity } from './domain/halloween.js';
 import { markDeparted, markReturned } from './domain/members.js';
-import { route } from './discord/router.js';
+import { inviteUrl, route } from './discord/router.js';
 import { auditLogger, syncChampionRole, type Bot } from './discord/runtime.js';
 import { startScheduler } from './discord/scheduler.js';
 
@@ -31,7 +31,15 @@ const bot: Bot = { client, ctx };
 ctx.onAudit = auditLogger(bot);
 
 client.once(Events.ClientReady, (c) => {
-  console.log(`emojitown bot ready as ${c.user.tag} in ${c.guilds.cache.size} server(s)`);
+  console.log(`emojitown bot ready as ${c.user.tag} in ${c.guilds.cache.size} server(s): ${c.guilds.cache.map((g) => g.name).join(', ') || 'none'}`);
+  const missingDevGuild = config.devGuildId && !c.guilds.cache.has(config.devGuildId);
+  if (c.guilds.cache.size === 0 || missingDevGuild) {
+    console.warn(
+      `\n⚠️  The bot user is not a member of ${missingDevGuild ? `your server (DEV_GUILD_ID ${config.devGuildId})` : 'any server'}.` +
+        '\n   Slash commands will reply "isn\'t a member of this server" until you invite it with the bot scope:' +
+        `\n   ${inviteUrl(config.clientId, config.devGuildId ?? undefined)}\n`,
+    );
+  }
   startScheduler(bot, config.tickIntervalMs);
 });
 
@@ -85,4 +93,17 @@ const shutdown = () => {
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
-await client.login(config.token);
+try {
+  await client.login(config.token);
+} catch (err) {
+  const e = err as { code?: string | number; status?: number; message?: string };
+  if (e.code === 'TokenInvalid' || e.status === 401 || /invalid token|unauthorized/i.test(e.message ?? '')) {
+    console.error('❌ Discord rejected the bot token. Copy a fresh one from Developer Portal → your app → Bot → Reset Token, and put it in .env as DISCORD_TOKEN.');
+  } else if (e.code === 4014 || /disallowed intents/i.test(e.message ?? '')) {
+    console.error('❌ Discord refused the connection: turn on "Server Members Intent" in Developer Portal → your app → Bot → Privileged Gateway Intents, then save.');
+  } else {
+    console.error('❌ Could not connect to Discord:', err);
+  }
+  ctx.db.close();
+  process.exit(1);
+}

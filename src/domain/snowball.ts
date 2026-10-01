@@ -60,7 +60,7 @@ export function packFor(ctx: Ctx, ev: SeasonEvent): SnowballPack {
 function assertCanPlay(ctx: Ctx, guildId: string, userId: string): void {
   assertNotExcluded(ctx, guildId, userId, 'snowball');
   if (isSnowballOptedOut(ctx, guildId, userId)) {
-    throw new UserError("You've opted out of snowball fights. Use `/snowball participation state:on` to join in again.");
+    throw new UserError("You've opted out of snowball fights. Use `/snowball join` to play again.");
   }
 }
 

@@ -194,7 +194,7 @@ export function reverseTxn(ctx: Ctx, guildId: string, txnId: number, reason: str
   return tx(ctx, () => {
     const original = getTxn(ctx, guildId, txnId);
     if (!original) throw new UserError(`No candy transaction #${txnId} in this server.`);
-    if (original.source === 'reversal') throw new UserError('A reversal cannot itself be reversed. Use `/admin candy adjust` instead.');
+    if (original.source === 'reversal') throw new UserError('A reversal cannot itself be reversed. Use `/admin give-candy` instead.');
     if (original.reversedById) throw new UserError(`Transaction #${txnId} was already reversed by #${original.reversedById}.`);
     const before = getBalance(ctx, guildId, original.userId);
     const { txn } = applyCandy(ctx, {

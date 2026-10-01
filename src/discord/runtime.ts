@@ -179,7 +179,7 @@ export async function syncChampionRole(bot: Bot, guildId: string): Promise<{ ok:
           guildId,
           'Champion role update failed',
           `Could not give the Halloween Champion role to ${state.desiredId ? `<@${state.desiredId}>` : 'nobody'}: ${message}\n` +
-            'Standings are correct. Check that the bot has **Manage Roles** and that its role sits above the Champion role, then run `/staff halloween reconcile`.',
+            'Standings are correct. Check that the bot has **Manage Roles** and that its role sits above the Champion role, then run `/mod fix-role`.',
         );
       }
       return { ok: false, error: message };

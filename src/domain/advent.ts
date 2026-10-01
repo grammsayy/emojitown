@@ -87,8 +87,8 @@ function requirePublished(ev: SeasonEvent): void {
 
 function resolveAdventEvent(ctx: Ctx, guildId: string, eventId?: string | null): SeasonEvent {
   const ev = eventId ? requireEvent(ctx, guildId, eventId, 'advent') : getCurrentOrLatestEvent(ctx, guildId, 'advent');
-  if (!ev) throw new UserError("There's no Advent calendar yet. Check `/season status` for upcoming events.");
-  if (ev.state === 'draft' || ev.state === 'scheduled') throw new UserError("The Advent calendar hasn't started yet. Check `/season status` for dates.");
+  if (!ev) throw new UserError("There's no Advent calendar yet. Check `/events` for what's coming up.");
+  if (ev.state === 'draft' || ev.state === 'scheduled') throw new UserError("The Advent calendar hasn't started yet. Check `/events` for dates.");
   requirePublished(ev);
   return ev;
 }
@@ -122,7 +122,7 @@ export function openDoor(ctx: Ctx, guildId: string, userId: string, day?: number
   const cfg = getConfig(ctx, guildId);
   if (ev.state === 'paused') requireActiveEvent(ctx, guildId, 'advent');
   const d = day ?? todaysDay(ctx, ev, cfg);
-  if (d === null) throw new UserError('There is no door dated today. Use `/advent calendar` to see released doors.');
+  if (d === null) throw new UserError('There is no door dated today. Use `/advent` to see the calendar.');
   if (!Number.isInteger(d) || d < 1 || d > cfg.adventDoorCount) throw new UserError(`Pick a door from 1 to ${cfg.adventDoorCount}.`);
   const times = doorTimes(ev, cfg, d);
   if (ctx.now() < times.unlockAt) throw new UserError(`Door ${d} is still locked. It opens <t:${Math.floor(times.unlockAt / 1000)}:F>.`);
@@ -280,7 +280,7 @@ export function publishCalendar(ctx: Ctx, guildId: string, eventId: string, acto
   return tx(ctx, () => {
     const ev = requireEvent(ctx, guildId, eventId, 'advent');
     if (ev.state === 'ended') throw new UserError('This Advent event has ended.');
-    if (ev.adventPublishedAt) throw new UserError('This calendar is already published. Use `/admin advent edit` with a reason for corrections.');
+    if (ev.adventPublishedAt) throw new UserError('This calendar is already published. Use `/setup door` with a reason for corrections.');
     const issues = validateCalendar(ctx, guildId, eventId);
     if (issues.length) throw new UserError(`Fix these first:\n• ${issues.slice(0, 15).join('\n• ')}`);
     setEventState(ctx, ev, { advent_published_at: ctx.now() });

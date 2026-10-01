@@ -58,3 +58,37 @@ export function formatDuration(ms: number): string {
   if (s === 0) return `${m} minute${m === 1 ? '' : 's'}`;
   return `${m}m ${s}s`;
 }
+
+const UNIT_SECONDS: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400, w: 604800 };
+
+/**
+ * Parses a duration such as `30s`, `5m`, `2h`, `1d`, `1w` or combinations like
+ * `1h30m` into seconds. A bare number uses `defaultUnit`. Returns null if invalid.
+ */
+export function parseDuration(value: string, defaultUnit: keyof typeof UNIT_SECONDS = 'm'): number | null {
+  const v = value.trim().toLowerCase().replace(/\s+/g, '');
+  if (!v) return null;
+  if (/^\d+(\.\d+)?$/.test(v)) return Math.round(Number(v) * UNIT_SECONDS[defaultUnit]!);
+  const re = /(\d+(?:\.\d+)?)([smhdw])/g;
+  let total = 0;
+  let consumed = 0;
+  for (const m of v.matchAll(re)) {
+    total += Number(m[1]) * UNIT_SECONDS[m[2]!]!;
+    consumed += m[0].length;
+  }
+  if (consumed !== v.length || total <= 0) return null;
+  return Math.round(total);
+}
+
+/** Formats seconds compactly, e.g. 90 → "1m 30s", 7200 → "2h". */
+export function formatSeconds(total: number): string {
+  const parts: string[] = [];
+  let rest = Math.round(total);
+  for (const [unit, size] of [['d', 86400], ['h', 3600], ['m', 60], ['s', 1]] as const) {
+    if (rest >= size) {
+      parts.push(`${Math.floor(rest / size)}${unit}`);
+      rest %= size;
+    }
+  }
+  return parts.join(' ') || '0s';
+}

@@ -33,12 +33,12 @@ export function checkEvent(ctx: Ctx, guildId: string, eventId: string): Readines
   if (running && running.id !== ev.id) errors.push(`\`${running.id}\` is already running. Only one ${FEATURE_LABEL[ev.feature]} event can run at a time.`);
 
   if (ev.feature === 'snowball' || ev.feature === 'halloween') {
-    if (getChannels(ctx, guildId, ev.feature).length === 0) errors.push(`No ${ev.feature} channels are configured.`);
+    if (getChannels(ctx, guildId, ev.feature).length === 0) errors.push(`No ${ev.feature} channel yet (\`/setup ${ev.feature} channel:\`).`);
     const version = ev.contentVersion ?? latestVersion(ctx, guildId, ev.feature);
     const result = validatePack(ev.feature, getPack(ctx, guildId, ev.feature, version));
     errors.push(...result.errors.map((e) => `Content: ${e}`));
     warnings.push(...result.warnings.slice(0, 5).map((w) => `Content: ${w}`));
-    if (version === 0) warnings.push(`Using the built-in placeholder ${ev.feature} content. Import the emojitown pack with \`/admin season content\`.`);
+    if (version === 0) warnings.push(`Using the built-in placeholder ${ev.feature} content. Upload the emojitown pack with \`/setup content\`.`);
   }
   if (ev.feature === 'halloween') {
     if (!cfg.championRoleId) warnings.push('No Halloween Champion role is configured.');
@@ -46,8 +46,7 @@ export function checkEvent(ctx: Ctx, guildId: string, eventId: string): Readines
     if (weights <= 0) errors.push('Rarity weights must add up to more than zero.');
   }
   if (ev.feature === 'advent') {
-    if (!getChannel(ctx, guildId, 'advent')) errors.push('No Advent channel is configured.');
-    if (!ev.adventPublishedAt) errors.push('The calendar has not been published (`/staff advent validate`, then `/admin advent publish`).');
+    if (!getChannel(ctx, guildId, 'advent')) errors.push('No Advent channel yet (`/setup advent channel:`).');
     const issues = validateCalendar(ctx, guildId, ev.id);
     errors.push(...issues.slice(0, 10));
     if (issues.length > 10) errors.push(`…and ${issues.length - 10} more calendar issues.`);
@@ -57,6 +56,8 @@ export function checkEvent(ctx: Ctx, guildId: string, eventId: string): Readines
 
 function activate(ctx: Ctx, ev: SeasonEvent, actorId: string): SeasonEvent {
   const patch: Record<string, unknown> = { state: 'active', activated_at: ev.activatedAt ?? ctx.now(), pause_reason: null };
+  // Starting an Advent event freezes (publishes) its validated calendar.
+  if (ev.feature === 'advent' && !ev.adventPublishedAt) patch.advent_published_at = ctx.now();
   if ((ev.feature === 'snowball' || ev.feature === 'halloween') && ev.contentVersion === null) {
     patch.content_version = latestVersion(ctx, ev.guildId, ev.feature);
   }
@@ -74,7 +75,7 @@ export function startEvent(ctx: Ctx, guildId: string, eventId: string, actorId: 
   return tx(ctx, () => {
     const ev = requireEvent(ctx, guildId, eventId);
     if (ev.state === 'active') throw new UserError('This event is already active.');
-    if (ev.state === 'paused') throw new UserError('This event is paused. Use `/staff event resume` instead.');
+    if (ev.state === 'paused') throw new UserError('This event is paused. Use `/mod resume` instead.');
     const { errors } = checkEvent(ctx, guildId, eventId);
     const all = [...errors, ...extraErrors];
     if (all.length) throw new UserError(`This event isn't ready to start:\n• ${all.join('\n• ')}`);
@@ -110,7 +111,14 @@ export function resumeEvent(ctx: Ctx, guildId: string, eventId: string, actorId:
 }
 
 /** Freezes an event. Idempotent: ending an already ended event is rejected without side effects. */
-export function endEvent(ctx: Ctx, guildId: string, eventId: string, actorId: string, reason?: string | null): { event: SeasonEvent; closed: Encounter[] } {
+export function endEvent(
+  ctx: Ctx,
+  guildId: string,
+  eventId: string,
+  actorId: string,
+  reason?: string | null,
+  opts: { keepChampionRole?: boolean } = {},
+): { event: SeasonEvent; closed: Encounter[] } {
   return tx(ctx, () => {
     const ev = requireEvent(ctx, guildId, eventId);
     if (ev.state === 'ended') throw new UserError('This event has already ended.');
@@ -121,7 +129,7 @@ export function endEvent(ctx: Ctx, guildId: string, eventId: string, actorId: st
       closed = closeOpenEncounters(ctx, guildId, 'cancelled', 'event ended');
       if (ev.state === 'active' || ev.state === 'paused') refreshChampion(ctx, ev);
       patch.final_champion_id = storedChampion(ctx, guildId, ev.id);
-      patch.champion_keep_role = cfg.championEndPolicy === 'keep' ? 1 : 0;
+      patch.champion_keep_role = (opts.keepChampionRole ?? cfg.championEndPolicy === 'keep') ? 1 : 0;
     }
     setEventState(ctx, ev, patch);
     const after = getEvent(ctx, guildId, eventId)!;

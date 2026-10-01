@@ -83,7 +83,7 @@ describe('event lifecycle', () => {
   it('will not start an event missing its setup', () => {
     const ctx = makeCtx('2026-10-05T00:00:00Z');
     const ev = createEvent(ctx, GUILD, 'halloween', 'Halloween 2026', ADMIN);
-    expect(() => startEvent(ctx, GUILD, ev.id, ADMIN)).toThrow(/No halloween channels/);
+    expect(() => startEvent(ctx, GUILD, ev.id, ADMIN)).toThrow(/No halloween channel/);
   });
 });
 

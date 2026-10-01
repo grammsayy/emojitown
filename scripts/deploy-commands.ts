@@ -19,3 +19,7 @@ const rest = new REST().setToken(token);
 const route = guildId ? Routes.applicationGuildCommands(clientId, guildId) : Routes.applicationCommands(clientId);
 await rest.put(route, { body });
 console.log(`Registered ${body.length} commands ${guildId ? `in server ${guildId}` : 'globally'}.`);
+console.log(
+  `\nIf you haven't yet, invite the bot itself (not just its commands) with:\n` +
+    `https://discord.com/oauth2/authorize?client_id=${clientId}&scope=bot+applications.commands&permissions=268553216${guildId ? `&guild_id=${guildId}&disable_guild_select=true` : ''}`,
+);

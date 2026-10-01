@@ -7,6 +7,7 @@ import { halloweenHandlers } from '../src/discord/handlers/halloween.js';
 import { helpHandlers } from '../src/discord/handlers/help.js';
 import { seasonHandlers } from '../src/discord/handlers/season.js';
 import { snowballHandlers } from '../src/discord/handlers/snowball.js';
+import { manageHandlers } from '../src/discord/handlers/manage.js';
 
 function keys(cmd: RESTPostAPIChatInputApplicationCommandsJSONBody): string[] {
   const subs = (cmd.options ?? []).filter(
@@ -23,7 +24,7 @@ function keys(cmd: RESTPostAPIChatInputApplicationCommandsJSONBody): string[] {
 describe('slash commands', () => {
   const json = commands.map((c) => c.toJSON());
   const commandKeys = json.flatMap(keys);
-  const handlerKeys = [snowballHandlers, halloweenHandlers, adventHandlers, candyHandlers, seasonHandlers, helpHandlers].flatMap((h) => Object.keys(h.chat ?? {}));
+  const handlerKeys = [snowballHandlers, halloweenHandlers, adventHandlers, candyHandlers, seasonHandlers, helpHandlers, manageHandlers].flatMap((h) => Object.keys(h.chat ?? {}));
 
   it('build, pass discord.js validation and fit Discord\'s 8000-character limit', () => {
     // Discord counts names, descriptions and choice names/values across the whole command tree.
@@ -43,49 +44,22 @@ describe('slash commands', () => {
   it('locks staff commands on Discord and leaves member commands open', () => {
     const manageGuild = PermissionFlagsBits.ManageGuild.toString();
     for (const c of json) {
-      if (c.name === 'admin' || c.name === 'staff') expect(c.default_member_permissions).toBe(manageGuild);
-      else expect(c.default_member_permissions ?? null).toBeNull();
+      if (['setup', 'admin', 'mod'].includes(c.name)) expect(c.default_member_permissions, c.name).toBe(manageGuild);
+      else expect(c.default_member_permissions ?? null, c.name).toBeNull();
     }
+    expect(levelFor('setup halloween')).toBe('admin');
+    expect(levelFor('admin end')).toBe('admin');
+    expect(levelFor('mod pause')).toBe('moderator');
   });
 
-  it('every staff subcommand lives under /admin or /staff', () => {
-    const staffish = /(setup|config|timezone|channel|support|announce|check|export|audit|content|create|schedule|start|end|pause|resume|exclude|include|correct|clear-warmup|champion|collection|preview|cancel|reconcile|edit|publish|validate|post|adjust|reverse|inspect)$/;
-    for (const k of commandKeys) {
-      if (k === 'season status' || k === 'support') continue;
-      if (staffish.test(k)) expect(levelFor(k), k).not.toBe('member');
-    }
-    expect(levelFor('admin season setup')).toBe('admin');
-    expect(levelFor('staff event pause')).toBe('moderator');
+  it('keeps commands flat: no subcommand groups anywhere', () => {
+    expect(commandKeys.every((k) => k.split(' ').length <= 2)).toBe(true);
   });
 
-  it('includes the full member command set from the specification', () => {
-    for (const k of [
-      'collect',
-      'throw',
-      'stats',
-      'leaderboard',
-      'snowball participation',
-      'trick',
-      'treat',
-      'halloween inventory',
-      'halloween missing',
-      'halloween item',
-      'halloween visitors',
-      'halloween leaderboard',
-      'halloween status',
-      'advent calendar',
-      'advent open',
-      'advent progress',
-      'candy balance',
-      'candy leaderboard',
-      'candy history',
-      'candy rules',
-      'help',
-      'season status',
-      'support',
-    ]) {
-      expect(commandKeys).toContain(k);
-      expect(levelFor(k)).toBe('member');
-    }
+  it('has the simplified member command set, open to everyone', () => {
+    const member = commandKeys.filter((k) => levelFor(k) === 'member');
+    expect([...member].sort()).toEqual(
+      ['advent', 'candy', 'collect', 'events', 'help', 'inventory', 'leaderboard', 'snowball join', 'snowball leave', 'stats', 'throw', 'treat', 'trick'].sort(),
+    );
   });
 });

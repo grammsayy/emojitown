@@ -69,7 +69,7 @@ export function getEvent(ctx: Ctx, guildId: string, id: string): SeasonEvent | n
 
 export function requireEvent(ctx: Ctx, guildId: string, id: string, feature?: Feature): SeasonEvent {
   const ev = getEvent(ctx, guildId, id);
-  if (!ev) throw new UserError(`No event with ID \`${id}\`. Use \`/season status\` to see event IDs.`);
+  if (!ev) throw new UserError(`No season called \`${id}\`. Pick one from the list.`);
   if (feature && ev.feature !== feature) {
     throw new UserError(`\`${id}\` is a ${FEATURE_LABEL[ev.feature]} event, not ${FEATURE_LABEL[feature]}.`);
   }
@@ -113,7 +113,7 @@ export function resolveViewEvent(ctx: Ctx, guildId: string, feature: Feature, ev
     return ev;
   }
   const ev = getCurrentOrLatestEvent(ctx, guildId, feature);
-  if (!ev) throw new UserError(`There hasn't been a ${FEATURE_LABEL[feature]} event yet. Check \`/season status\` for upcoming events.`);
+  if (!ev) throw new UserError(`There hasn't been a ${FEATURE_LABEL[feature]} event yet. Check \`/events\` for what's coming up.`);
   return ev;
 }
 
@@ -126,7 +126,7 @@ export function requireActiveEvent(ctx: Ctx, guildId: string, feature: Feature):
       `${FEATURE_LABEL[feature]} is paused right now${ev.pauseReason ? ` (${ev.pauseReason})` : ''}. Your progress is safe; check back soon.`,
     );
   }
-  throw new UserError(`${FEATURE_LABEL[feature]} isn't running right now. Use \`/season status\` to see upcoming events.`);
+  throw new UserError(`${FEATURE_LABEL[feature]} isn't running right now. Check \`/events\` for what's coming up.`);
 }
 
 export interface EventWindow {
@@ -166,6 +166,34 @@ export function defaultDates(feature: Feature, year: number): { start: string; e
     case 'advent':
       return { start: `${year}-12-01T00:00`, end: `${year}-12-25T00:00`, claimDeadline: `${year}-12-25T00:00` };
   }
+}
+
+/** The year whose default dates a new event for `feature` would use (next year once this year's season is over). */
+export function seasonYear(ctx: Ctx, guildId: string, feature: Feature): number {
+  const tz = getConfig(ctx, guildId).timezone;
+  const year = DateTime.fromMillis(ctx.now(), { zone: tz }).year;
+  return localToMs(defaultDates(feature, year).end, tz) <= ctx.now() ? year + 1 : year;
+}
+
+export const DEFAULT_EVENT_NAME: Record<Feature, string> = { halloween: 'Halloween', snowball: 'Snowball Fights', advent: 'Advent Calendar' };
+
+/** The running event for a feature, else the next one that hasn't started yet. */
+export function getTargetEvent(ctx: Ctx, guildId: string, feature: Feature): SeasonEvent | null {
+  return (
+    getCurrentEvent(ctx, guildId, feature) ??
+    listEvents(ctx, guildId, feature)
+      .filter((e) => e.state === 'draft' || e.state === 'scheduled')
+      .sort((a, b) => a.startLocal.localeCompare(b.startLocal))[0] ??
+    null
+  );
+}
+
+/** Returns the running or upcoming event for a feature, creating this season's event if there is none. */
+export function ensureEvent(ctx: Ctx, guildId: string, feature: Feature, actorId: string): { event: SeasonEvent; created: boolean } {
+  const existing = getTargetEvent(ctx, guildId, feature);
+  if (existing) return { event: existing, created: false };
+  const name = `${DEFAULT_EVENT_NAME[feature]} ${seasonYear(ctx, guildId, feature)}`;
+  return { event: createEvent(ctx, guildId, feature, name, actorId), created: true };
 }
 
 export function createEvent(ctx: Ctx, guildId: string, feature: Feature, name: string, actorId: string): SeasonEvent {
@@ -229,7 +257,7 @@ export function scheduleEvent(ctx: Ctx, guildId: string, eventId: string, input:
       throw new UserError('This event is already running, so only its end date can change.');
     }
     if ((ev.state === 'active' || ev.state === 'paused') && localToMs(endLocal, tz) <= ctx.now()) {
-      throw new UserError('A running event needs an end date in the future. Use `/admin event end` to end it now.');
+      throw new UserError('A running event needs an end date in the future. Use `/admin end` to end it now.');
     }
 
     let claimDeadlineLocal: string | null = null;

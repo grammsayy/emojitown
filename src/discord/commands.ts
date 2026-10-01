@@ -4,516 +4,294 @@ import {
   PermissionFlagsBits,
   SlashCommandBuilder,
   type SlashCommandStringOption,
-  type SlashCommandSubcommandBuilder,
 } from 'discord.js';
 import type { Level } from './runtime.js';
 
-const eventOpt = (required = false, description = 'Event ID (defaults to the current or latest event)') => (o: SlashCommandStringOption) =>
-  o.setName('event').setDescription(description).setRequired(required).setAutocomplete(true);
-
-const reasonOpt = (o: SlashCommandStringOption) => o.setName('reason').setDescription('Reason (recorded in the audit log)').setRequired(true).setMaxLength(300);
-
-const pageOpt = (s: SlashCommandSubcommandBuilder) => s.addIntegerOption((o) => o.setName('page').setDescription('Page number').setMinValue(1));
-
-type Sub = (s: SlashCommandSubcommandBuilder) => SlashCommandSubcommandBuilder;
-
-const FEATURE_CHOICES = [
+const GAMES = [
+  { name: 'Halloween (Trick or Treat)', value: 'halloween' },
   { name: 'Snowball Fights', value: 'snowball' },
-  { name: 'Trick or Treat', value: 'halloween' },
   { name: 'Advent Calendar', value: 'advent' },
 ];
+
+const gameOpt = (o: SlashCommandStringOption) => o.setName('game').setDescription('Which game').setRequired(true).addChoices(...GAMES);
+const reasonOpt = (o: SlashCommandStringOption) => o.setName('reason').setDescription('Why (saved in the staff log)').setRequired(true).setMaxLength(300);
+const seasonOpt = (o: SlashCommandStringOption) =>
+  o.setName('season').setDescription('A past season (defaults to the current one)').setAutocomplete(true);
+const dateOpt = (name: string, description: string) => (o: SlashCommandStringOption) =>
+  o.setName(name).setDescription(description).setMinLength(10).setMaxLength(10);
+const durationOpt = (name: string, description: string) => (o: SlashCommandStringOption) =>
+  o.setName(name).setDescription(description).setMaxLength(12);
 
 function command(name: string, description: string) {
   return new SlashCommandBuilder().setName(name).setDescription(description).setContexts(InteractionContextType.Guild);
 }
 
 // ── Member commands ──────────────────────────────────────────────────
-// Visible to everyone. Staff subcommands live under /admin and /staff below,
-// because Discord can only restrict whole top-level commands, not subcommands.
 
 const memberCommands = [
-  command('collect', 'Collect a snowball'),
-  command('throw', 'Throw a snowball at another member').addUserOption((o) =>
+  command('collect', 'Snowball Fights: make a snowball'),
+  command('throw', 'Snowball Fights: throw a snowball at someone').addUserOption((o) =>
     o.setName('target').setDescription('Who to throw at').setRequired(true),
   ),
-  command('stats', 'Show snowball statistics')
-    .addUserOption((o) => o.setName('target').setDescription('Member (defaults to you)'))
-    .addStringOption(eventOpt()),
-  command('leaderboard', 'Show snowball standings')
-    .addStringOption(eventOpt())
-    .addIntegerOption((o) => o.setName('page').setDescription('Page number').setMinValue(1)),
-  command('snowball', 'Snowball Fights').addSubcommand((s) =>
-    s
-      .setName('participation')
-      .setDescription('Join or leave snowball fights')
-      .addStringOption((o) =>
-        o
-          .setName('state')
-          .setDescription('Play or opt out')
-          .setRequired(true)
-          .addChoices({ name: 'on (join in)', value: 'on' }, { name: 'off (opt out)', value: 'off' }),
-      ),
+  command('stats', 'Snowball Fights: hits, misses and snowballs')
+    .addUserOption((o) => o.setName('member').setDescription('Whose stats (default: you)'))
+    .addStringOption(seasonOpt),
+  command('snowball', 'Snowball Fights: join or leave')
+    .addSubcommand((s) => s.setName('join').setDescription('Play snowball fights (you are in by default)'))
+    .addSubcommand((s) => s.setName('leave').setDescription("Stop playing: nobody can throw at you and you can't throw")),
+
+  command('trick', 'Halloween: answer the visitor in this channel with a Trick'),
+  command('treat', 'Halloween: answer the visitor in this channel with a Treat'),
+  command('inventory', 'Halloween: your collected items')
+    .addUserOption((o) => o.setName('member').setDescription('Whose collection (default: you)'))
+    .addStringOption((o) =>
+      o
+        .setName('rarity')
+        .setDescription('Only show one rarity')
+        .addChoices({ name: 'common', value: 'common' }, { name: 'uncommon', value: 'uncommon' }, { name: 'rare', value: 'rare' }),
+    )
+    .addStringOption(seasonOpt),
+
+  command('advent', "Advent Calendar: open today's door, or pick a day").addIntegerOption((o) =>
+    o.setName('day').setDescription('Door number (default: today)').setMinValue(1).setMaxValue(31),
   ),
 
-  command('trick', 'Answer the visitor in this channel with a Trick'),
-  command('treat', 'Answer the visitor in this channel with a Treat'),
-  command('halloween', 'Trick or Treat')
-    .addSubcommand((s) =>
-      s
-        .setName('inventory')
-        .setDescription('Browse collected items')
-        .addUserOption((o) => o.setName('member').setDescription('Member (defaults to you)'))
-        .addStringOption(eventOpt())
-        .addStringOption((o) =>
-          o
-            .setName('rarity')
-            .setDescription('Filter by rarity')
-            .addChoices({ name: 'common', value: 'common' }, { name: 'uncommon', value: 'uncommon' }, { name: 'rare', value: 'rare' }),
-        ),
+  command('candy', 'Your candy balance and history').addUserOption((o) => o.setName('member').setDescription('Whose balance (default: you)')),
+  command('leaderboard', 'Standings for a game or for candy')
+    .addStringOption((o) =>
+      o
+        .setName('game')
+        .setDescription('Which leaderboard (default: the game running now)')
+        .addChoices(...GAMES.filter((g) => g.value !== 'advent'), { name: 'Candy', value: 'candy' }),
     )
-    .addSubcommand((s) => s.setName('missing').setDescription('Show items you still need').addStringOption(eventOpt()))
-    .addSubcommand((s) =>
-      s
-        .setName('item')
-        .setDescription('Show an item')
-        .addStringOption((o) => o.setName('item').setDescription('Item name').setRequired(true).setAutocomplete(true))
-        .addStringOption(eventOpt()),
-    )
-    .addSubcommand((s) => s.setName('visitors').setDescription('Browse the visitor roster').addStringOption(eventOpt()))
-    .addSubcommand((s) => pageOpt(s.setName('leaderboard').setDescription('Collection standings').addStringOption(eventOpt())))
-    .addSubcommand((s) => s.setName('status').setDescription('Event dates, channels, your progress and the current Champion')),
-
-  command('advent', 'Advent Calendar')
-    .addSubcommand((s) => s.setName('calendar').setDescription('Show the calendar').addStringOption(eventOpt()))
-    .addSubcommand((s) =>
-      s
-        .setName('open')
-        .setDescription("Open today's door or a released door")
-        .addIntegerOption((o) => o.setName('day').setDescription('Door number').setMinValue(1).setMaxValue(31))
-        .addStringOption(eventOpt()),
-    )
-    .addSubcommand((s) => s.setName('progress').setDescription('Your claimed doors and Advent candy').addStringOption(eventOpt())),
-
-  command('candy', 'Candy Counter')
-    .addSubcommand((s) =>
-      s.setName('balance').setDescription('Show a candy balance').addUserOption((o) => o.setName('member').setDescription('Member (defaults to you)')),
-    )
-    .addSubcommand((s) =>
-      pageOpt(s.setName('leaderboard').setDescription('All-time or event standings').addStringOption(eventOpt(false, 'Event ID (omit for all-time)'))),
-    )
-    .addSubcommand((s) => pageOpt(s.setName('history').setDescription('Your recent rewards and adjustments')))
-    .addSubcommand((s) => s.setName('rules').setDescription('How candy is earned')),
-
-  command('help', 'How the emojitown seasonal games work').addStringOption((o) =>
+    .addStringOption(seasonOpt)
+    .addIntegerOption((o) => o.setName('page').setDescription('Page').setMinValue(1)),
+  command('events', "What's running, when, and where"),
+  command('help', 'How the emojitown games work').addStringOption((o) =>
     o
-      .setName('topic')
-      .setDescription('Feature')
-      .addChoices(
-        { name: 'Snowball Fights', value: 'snowball' },
-        { name: 'Trick or Treat', value: 'halloween' },
-        { name: 'Advent Calendar', value: 'advent' },
-        { name: 'Candy Counter', value: 'candy' },
-      ),
+      .setName('game')
+      .setDescription('Pick a game for details')
+      .addChoices(...GAMES, { name: 'Candy', value: 'candy' }),
   ),
-  command('support', 'Where to get help'),
-  command('season', 'Seasonal events').addSubcommand((s) => s.setName('status').setDescription('Active and upcoming events')),
 ];
 
-// ── Administrator subcommands (/admin) ───────────────────────────────
+// ── /setup: everything needed to go live (Manage Server) ─────────────
 
-const seasonSetup: Sub = (s) =>
-  s
-    .setName('setup')
-    .setDescription('Initial setup: timezone, support, log channel, Event Manager role')
-    .addStringOption((o) => o.setName('timezone').setDescription('IANA timezone, e.g. Europe/Copenhagen').setAutocomplete(true))
-    .addStringOption((o) => o.setName('support').setDescription('Support channel mention or link').setMaxLength(200))
-    .addChannelOption((o) => o.setName('log_channel').setDescription('Private staff log channel').addChannelTypes(ChannelType.GuildText))
-    .addRoleOption((o) => o.setName('event_manager_role').setDescription('Event Manager role'));
-
-const seasonChannel: Sub = (s) =>
-  s
-    .setName('channel')
-    .setDescription('Manage channel assignments')
-    .addStringOption((o) =>
-      o.setName('feature').setDescription('Feature').setRequired(true).addChoices(...FEATURE_CHOICES, { name: 'Staff logs', value: 'logs' }),
-    )
-    .addStringOption((o) =>
-      o
-        .setName('action')
-        .setDescription('Action')
-        .setRequired(true)
-        .addChoices({ name: 'add', value: 'add' }, { name: 'remove', value: 'remove' }, { name: 'list', value: 'list' }),
-    )
-    .addChannelOption((o) =>
-      o.setName('channel').setDescription('Channel (for add/remove)').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement),
-    );
-
-const seasonContent = (admin: boolean): Sub => (s) =>
-  s
-    .setName('content')
-    .setDescription(admin ? 'Import, validate, preview or export content packs' : 'Validate or preview content packs')
-    .addStringOption((o) =>
-      o
-        .setName('feature')
-        .setDescription('Content pack')
-        .setRequired(true)
-        .addChoices({ name: 'Snowball Fights', value: 'snowball' }, { name: 'Trick or Treat', value: 'halloween' }),
-    )
-    .addStringOption((o) =>
-      o
-        .setName('action')
-        .setDescription('Action')
-        .setRequired(true)
-        .addChoices(
-          ...(admin ? [{ name: 'import', value: 'import' }] : []),
-          { name: 'validate', value: 'validate' },
-          { name: 'preview', value: 'preview' },
-          ...(admin ? [{ name: 'export', value: 'export' }] : []),
-        ),
-    )
-    .addAttachmentOption((o) => o.setName('file').setDescription('Content pack JSON (import/validate)'));
-
-const adminCommand = command('admin', 'emojitown administration (Manage Server)')
+const setupCommand = command('setup', 'Set up the emojitown games (admins)')
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-  .addSubcommandGroup((g) =>
-    g
-      .setName('season')
-      .setDescription('Server setup and records')
-      .addSubcommand(seasonSetup)
-      .addSubcommand((s) => s.setName('config').setDescription('Saved settings and missing requirements'))
-      .addSubcommand((s) =>
-        s
-          .setName('timezone')
-          .setDescription('Set the server timezone')
-          .addStringOption((o) => o.setName('zone').setDescription('IANA timezone, e.g. Europe/Copenhagen').setRequired(true).setAutocomplete(true)),
-      )
-      .addSubcommand(seasonChannel)
-      .addSubcommand((s) =>
-        s
-          .setName('staff')
-          .setDescription('Grant or remove Event Manager access')
-          .addRoleOption((o) => o.setName('role').setDescription('Role').setRequired(true))
-          .addStringOption((o) =>
-            o
-              .setName('action')
-              .setDescription('Action')
-              .setRequired(true)
-              .addChoices({ name: 'grant', value: 'grant' }, { name: 'remove', value: 'remove' }),
-          ),
-      )
-      .addSubcommand((s) =>
-        s
-          .setName('support')
-          .setDescription('Set the destination shown by /support')
-          .addStringOption((o) => o.setName('destination').setDescription('Channel mention or link').setRequired(true).setMaxLength(200)),
-      )
-      .addSubcommand((s) =>
-        s
-          .setName('announce')
-          .setDescription('Preview and post member instructions')
-          .addStringOption(eventOpt(true, 'Event ID'))
-          .addChannelOption((o) =>
-            o.setName('channel').setDescription('Where to post').setRequired(true).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement),
-          ),
-      )
-      .addSubcommand((s) => s.setName('check').setDescription('Readiness check').addStringOption(eventOpt(false, 'Event ID (omit for all upcoming)')))
-      .addSubcommand((s) => s.setName('export').setDescription('Download event data').addStringOption(eventOpt(true, 'Event ID')))
-      .addSubcommand((s) =>
-        s
-          .setName('audit')
-          .setDescription('Staff changes and reward activity')
-          .addUserOption((o) => o.setName('member').setDescription('Member'))
-          .addStringOption(eventOpt(false, 'Event ID')),
-      )
-      .addSubcommand(seasonContent(true)),
+  .addSubcommand((s) =>
+    s
+      .setName('server')
+      .setDescription('Step 1: timezone, staff role, log channel, support link')
+      .addStringOption((o) => o.setName('timezone').setDescription('e.g. Europe/Copenhagen').setAutocomplete(true))
+      .addRoleOption((o) => o.setName('staff_role').setDescription('Role for event staff (Event Managers)'))
+      .addChannelOption((o) => o.setName('log_channel').setDescription('Private channel for staff logs and alerts').addChannelTypes(ChannelType.GuildText))
+      .addStringOption((o) => o.setName('support').setDescription('Where members get help, e.g. #help').setMaxLength(200))
+      .addRoleOption((o) => o.setName('remove_staff_role').setDescription('Take Event Manager access away from a role')),
   )
-  .addSubcommandGroup((g) =>
-    g
-      .setName('event')
-      .setDescription('Create, schedule, start and end events')
-      .addSubcommand((s) =>
-        s
-          .setName('create')
-          .setDescription('Create a draft event')
-          .addStringOption((o) => o.setName('feature').setDescription('Feature').setRequired(true).addChoices(...FEATURE_CHOICES))
-          .addStringOption((o) => o.setName('name').setDescription('Name, e.g. "Halloween 2026"').setRequired(true).setMaxLength(60)),
-      )
-      .addSubcommand((s) => s.setName('schedule').setDescription('Set dates (opens a form)').addStringOption(eventOpt(true, 'Event ID')))
-      .addSubcommand((s) => s.setName('start').setDescription('Validate and activate now').addStringOption(eventOpt(true, 'Event ID')))
-      .addSubcommand((s) => s.setName('end').setDescription('Freeze an event and publish results').addStringOption(eventOpt(true, 'Event ID'))),
-  )
-  .addSubcommandGroup((g) =>
-    g
-      .setName('snowball')
-      .setDescription('Snowball Fights administration')
-      .addSubcommand((s) =>
-        s
-          .setName('setup')
-          .setDescription('Playing channels and branding; shows the fixed gameplay rules')
-          .addChannelOption((o) => o.setName('add_channel').setDescription('Add a playing channel').addChannelTypes(ChannelType.GuildText))
-          .addChannelOption((o) => o.setName('remove_channel').setDescription('Remove a playing channel').addChannelTypes(ChannelType.GuildText)),
-      )
-      .addSubcommand((s) =>
-        s
-          .setName('correct')
-          .setDescription('Correct a snowball statistic')
-          .addUserOption((o) => o.setName('member').setDescription('Member').setRequired(true))
-          .addStringOption(eventOpt(true, 'Event ID'))
-          .addStringOption((o) =>
-            o
-              .setName('field')
-              .setDescription('Statistic')
-              .setRequired(true)
-              .addChoices(
-                { name: 'hits', value: 'hits' },
-                { name: 'misses', value: 'misses' },
-                { name: 'kos-received', value: 'kos-received' },
-                { name: 'collected', value: 'collected' },
-              ),
-          )
-          .addIntegerOption((o) => o.setName('value').setDescription('New value').setRequired(true).setMinValue(0))
-          .addStringOption(reasonOpt),
-      )
-      .addSubcommand((s) =>
-        s
-          .setName('clear-warmup')
-          .setDescription('Remove an erroneous warm-up restriction')
-          .addUserOption((o) => o.setName('member').setDescription('Member').setRequired(true))
-          .addStringOption(reasonOpt),
-      ),
-  )
-  .addSubcommandGroup((g) =>
-    g
+  .addSubcommand((s) =>
+    s
       .setName('halloween')
-      .setDescription('Trick or Treat administration')
-      .addSubcommand((s) =>
-        s
-          .setName('setup')
-          .setDescription('Spawn timing, channels, rarity weights and candy limit')
-          .addIntegerOption((o) => o.setName('spawn_min_minutes').setDescription('Shortest wait between visitors').setMinValue(1).setMaxValue(240))
-          .addIntegerOption((o) => o.setName('spawn_max_minutes').setDescription('Longest wait between visitors').setMinValue(1).setMaxValue(240))
-          .addIntegerOption((o) => o.setName('visit_seconds').setDescription('How long a visitor stays').setMinValue(15).setMaxValue(900))
-          .addIntegerOption((o) =>
-            o.setName('activity_minutes').setDescription('Channel must have human messages within this window').setMinValue(1).setMaxValue(120),
-          )
-          .addChannelOption((o) => o.setName('add_channel').setDescription('Enable a channel').addChannelTypes(ChannelType.GuildText))
-          .addChannelOption((o) => o.setName('remove_channel').setDescription('Disable a channel').addChannelTypes(ChannelType.GuildText))
-          .addIntegerOption((o) => o.setName('common_weight').setDescription('Common drop weight (default 70)').setMinValue(0).setMaxValue(1000))
-          .addIntegerOption((o) => o.setName('uncommon_weight').setDescription('Uncommon drop weight (default 25)').setMinValue(0).setMaxValue(1000))
-          .addIntegerOption((o) => o.setName('rare_weight').setDescription('Rare drop weight (default 5)').setMinValue(0).setMaxValue(1000))
-          .addIntegerOption((o) => o.setName('daily_candy_limit').setDescription('Daily Halloween candy limit per member').setMinValue(0).setMaxValue(100000)),
+      .setDescription('Step 2: set up and start Trick or Treat')
+      .addChannelOption((o) => o.setName('channel').setDescription('Channel where visitors appear').addChannelTypes(ChannelType.GuildText))
+      .addRoleOption((o) => o.setName('champion_role').setDescription('Empty role given to the top collector'))
+      .addStringOption(dateOpt('start', 'First day, YYYY-MM-DD (default Oct 1)'))
+      .addStringOption(dateOpt('end', 'Last day, YYYY-MM-DD (default Oct 31)'))
+      .addStringOption(durationOpt('wait_min', 'Shortest wait between visitors, e.g. 30s, 10m, 1h (default 10m)'))
+      .addStringOption(durationOpt('wait_max', 'Longest wait between visitors, e.g. 20m, 2h (default 20m)'))
+      .addStringOption(durationOpt('visit_length', 'How long a visitor stays, e.g. 90s, 2m (default 90s)'))
+      .addIntegerOption((o) => o.setName('candy_per_win').setDescription('Candy per win (default 5)').setMinValue(0).setMaxValue(10000))
+      .addIntegerOption((o) => o.setName('daily_candy_limit').setDescription('Max Halloween candy per member per day (default 100)').setMinValue(0).setMaxValue(100000))
+      .addChannelOption((o) => o.setName('remove_channel').setDescription('Stop visitors in a channel').addChannelTypes(ChannelType.GuildText)),
+  )
+  .addSubcommand((s) =>
+    s
+      .setName('snowball')
+      .setDescription('Step 2: set up and start Snowball Fights')
+      .addChannelOption((o) => o.setName('channel').setDescription('Channel where snowball fights happen').addChannelTypes(ChannelType.GuildText))
+      .addStringOption(dateOpt('start', 'First day, YYYY-MM-DD (default Dec 1)'))
+      .addStringOption(dateOpt('end', 'Last day, YYYY-MM-DD (default Dec 31)'))
+      .addChannelOption((o) => o.setName('remove_channel').setDescription('Stop snowball fights in a channel').addChannelTypes(ChannelType.GuildText)),
+  )
+  .addSubcommand((s) =>
+    s
+      .setName('advent')
+      .setDescription('Step 2: set up the Advent Calendar (then fill doors with /setup door)')
+      .addChannelOption((o) =>
+        o.setName('channel').setDescription('Channel for daily door posts').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement),
       )
-      .addSubcommand((s) =>
-        s
-          .setName('champion')
-          .setDescription('Champion role and what happens at event end')
-          .addRoleOption((o) => o.setName('role').setDescription('A dedicated role with no permissions').setRequired(true))
-          .addStringOption((o) =>
-            o
-              .setName('end_policy')
-              .setDescription('At event end')
-              .setRequired(true)
-              .addChoices({ name: 'keep until the next Halloween starts', value: 'keep' }, { name: 'remove at event end', value: 'remove' }),
+      .addStringOption(dateOpt('start', 'Day of door 1, YYYY-MM-DD (default Dec 1)'))
+      .addIntegerOption((o) => o.setName('doors').setDescription('Number of doors (default 24)').setMinValue(1).setMaxValue(31))
+      .addStringOption((o) => o.setName('unlock_time').setDescription('Time doors open each day, HH:MM (default 09:00)').setMaxLength(5))
+      .addBooleanOption((o) => o.setName('catch_up').setDescription('Can members claim missed doors later? (default yes)')),
+  )
+  .addSubcommand((s) =>
+    s
+      .setName('door')
+      .setDescription('Write or edit one Advent door (opens a form)')
+      .addIntegerOption((o) => o.setName('day').setDescription('Door number').setRequired(true).setMinValue(1).setMaxValue(31))
+      .addIntegerOption((o) => o.setName('candy').setDescription('Candy for opening it (default 10, 0 for none)').setMinValue(0).setMaxValue(10000))
+      .addStringOption((o) => o.setName('reason').setDescription('Needed when changing a door that is already live').setMaxLength(300)),
+  )
+  .addSubcommand((s) =>
+    s
+      .setName('content')
+      .setDescription('Upload names, messages and artwork (JSON), or download the current file')
+      .addStringOption((o) =>
+        o
+          .setName('game')
+          .setDescription('Which content')
+          .setRequired(true)
+          .addChoices({ name: 'Halloween (visitors and items)', value: 'halloween' }, { name: 'Snowball Fights (messages and art)', value: 'snowball' }),
+      )
+      .addAttachmentOption((o) => o.setName('file').setDescription('JSON file to upload. Leave empty to download the current one.')),
+  )
+  .addSubcommand((s) => s.setName('status').setDescription('Checklist: what is set up, what is live, what is missing'));
+
+// ── /admin: running the games (Manage Server) ────────────────────────
+
+const adminCommand = command('admin', 'Run the emojitown games (admins)')
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+  .addSubcommand((s) => s.setName('start').setDescription('Start a game right now').addStringOption(gameOpt))
+  .addSubcommand((s) =>
+    s
+      .setName('end')
+      .setDescription('End a game now and post the results')
+      .addStringOption(gameOpt)
+      .addStringOption((o) =>
+        o
+          .setName('champion_role')
+          .setDescription('Halloween only: what happens to the Champion role (default keep)')
+          .addChoices({ name: 'keep until next Halloween', value: 'keep' }, { name: 'remove now', value: 'remove' }),
+      ),
+  )
+  .addSubcommand((s) =>
+    s
+      .setName('give-candy')
+      .setDescription('Give candy (or take it away with a negative number)')
+      .addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true))
+      .addIntegerOption((o) => o.setName('amount').setDescription('e.g. 25 or -10').setRequired(true).setMinValue(-1000000).setMaxValue(1000000))
+      .addStringOption(reasonOpt),
+  )
+  .addSubcommand((s) =>
+    s
+      .setName('undo-candy')
+      .setDescription('Undo a candy transaction (number from /mod candy-history)')
+      .addIntegerOption((o) => o.setName('transaction').setDescription('Transaction number').setRequired(true).setMinValue(1))
+      .addStringOption(reasonOpt),
+  )
+  .addSubcommand((s) =>
+    s
+      .setName('fix-stats')
+      .setDescription("Correct someone's snowball stats")
+      .addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true))
+      .addStringOption((o) =>
+        o
+          .setName('stat')
+          .setDescription('Which number')
+          .setRequired(true)
+          .addChoices(
+            { name: 'hits', value: 'hits' },
+            { name: 'misses', value: 'misses' },
+            { name: 'KOs received', value: 'kos-received' },
+            { name: 'snowballs collected', value: 'collected' },
           ),
       )
-      .addSubcommand((s) =>
-        s
-          .setName('collection')
-          .setDescription('Correct item ownership')
-          .addUserOption((o) => o.setName('member').setDescription('Member').setRequired(true))
-          .addStringOption(eventOpt(true, 'Event ID'))
-          .addStringOption((o) =>
-            o
-              .setName('action')
-              .setDescription('Grant or revoke')
-              .setRequired(true)
-              .addChoices({ name: 'grant', value: 'grant' }, { name: 'revoke', value: 'revoke' }),
-          )
-          .addStringOption((o) => o.setName('item').setDescription('Item').setRequired(true).setAutocomplete(true))
-          .addStringOption(reasonOpt),
+      .addIntegerOption((o) => o.setName('value').setDescription('New value').setRequired(true).setMinValue(0))
+      .addStringOption(reasonOpt),
+  )
+  .addSubcommand((s) =>
+    s
+      .setName('fix-item')
+      .setDescription("Give or remove a Halloween item in someone's collection")
+      .addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true))
+      .addStringOption((o) =>
+        o.setName('action').setDescription('Give or remove').setRequired(true).addChoices({ name: 'give', value: 'grant' }, { name: 'remove', value: 'revoke' }),
+      )
+      .addStringOption((o) => o.setName('item').setDescription('Item').setRequired(true).setAutocomplete(true))
+      .addStringOption(reasonOpt),
+  )
+  .addSubcommand((s) =>
+    s
+      .setName('clear-warmup')
+      .setDescription('Let someone collect snowballs again right away')
+      .addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true))
+      .addStringOption(reasonOpt),
+  )
+  .addSubcommand((s) =>
+    s
+      .setName('announce')
+      .setDescription('Post how-to-play instructions for a game')
+      .addStringOption(gameOpt)
+      .addChannelOption((o) =>
+        o.setName('channel').setDescription('Where to post').setRequired(true).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement),
       ),
   )
-  .addSubcommandGroup((g) =>
-    g
-      .setName('advent')
-      .setDescription('Advent Calendar administration')
-      .addSubcommand((s) =>
-        s
-          .setName('setup')
-          .setDescription('Channel, doors, times and catch-up policy')
-          .addChannelOption((o) => o.setName('channel').setDescription('Advent channel').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
-          .addIntegerOption((o) => o.setName('doors').setDescription('Number of doors (default 24)').setMinValue(1).setMaxValue(31))
-          .addStringOption((o) => o.setName('unlock_time').setDescription('Door unlock time, HH:MM (default 09:00)').setMaxLength(5))
-          .addStringOption((o) => o.setName('announce_time').setDescription('Announcement time, HH:MM (default 09:00)').setMaxLength(5))
-          .addStringOption((o) =>
-            o
-              .setName('policy')
-              .setDescription('Catch-up policy')
-              .addChoices(
-                { name: 'catch-up (claim earlier doors until the deadline)', value: 'catch-up' },
-                { name: 'same-day (each door expires at local midnight)', value: 'same-day' },
-              ),
-          )
-          .addStringOption(eventOpt(false, 'Event whose claim deadline to set'))
-          .addStringOption((o) => o.setName('claim_deadline').setDescription('YYYY-MM-DD HH:MM (default Dec 25 00:00)').setMaxLength(16)),
-      )
-      .addSubcommand((s) =>
-        s
-          .setName('edit')
-          .setDescription('Edit a door (opens a form)')
-          .addIntegerOption((o) => o.setName('day').setDescription('Door number').setRequired(true).setMinValue(1).setMaxValue(31))
-          .addStringOption(eventOpt(true, 'Event ID'))
-          .addIntegerOption((o) => o.setName('candy').setDescription('Candy for opening (default 10, 0 for none)').setMinValue(0).setMaxValue(10000))
-          .addStringOption((o) => o.setName('reason').setDescription('Required once the calendar is published').setMaxLength(300)),
-      )
-      .addSubcommand((s) => s.setName('publish').setDescription('Freeze a validated calendar for release').addStringOption(eventOpt(true, 'Event ID'))),
-  )
-  .addSubcommandGroup((g) =>
-    g
-      .setName('candy')
-      .setDescription('Candy Counter administration')
-      .addSubcommand((s) =>
-        s
-          .setName('setup')
-          .setDescription('Halloween candy per win and daily limit')
-          .addIntegerOption((o) => o.setName('halloween_per_win').setDescription('Candy per Halloween win (default 5)').setMinValue(0).setMaxValue(10000))
-          .addIntegerOption((o) => o.setName('halloween_daily_limit').setDescription('Daily Halloween limit (default 100)').setMinValue(0).setMaxValue(100000)),
-      )
-      .addSubcommand((s) =>
-        s
-          .setName('adjust')
-          .setDescription('Add or remove candy')
-          .addUserOption((o) => o.setName('member').setDescription('Member').setRequired(true))
-          .addIntegerOption((o) =>
-            o.setName('amount').setDescription('Positive to add, negative to remove').setRequired(true).setMinValue(-1000000).setMaxValue(1000000),
-          )
-          .addStringOption((o) => o.setName('source').setDescription('What this is for, e.g. "trivia night"').setRequired(true).setMaxLength(80))
-          .addStringOption(reasonOpt)
-          .addStringOption(eventOpt(false, 'Attribute to an event (optional)')),
-      )
-      .addSubcommand((s) =>
-        s
-          .setName('reverse')
-          .setDescription('Reverse a mistaken transaction')
-          .addIntegerOption((o) => o.setName('transaction').setDescription('Transaction number').setRequired(true).setMinValue(1))
-          .addStringOption(reasonOpt),
-      ),
+  .addSubcommand((s) => s.setName('export').setDescription('Download all data for a game').addStringOption(gameOpt).addStringOption(seasonOpt))
+  .addSubcommand((s) =>
+    s
+      .setName('audit')
+      .setDescription('Recent staff actions')
+      .addUserOption((o) => o.setName('member').setDescription('Only actions involving this member')),
   );
 
-// ── Event Manager subcommands (/staff) ───────────────────────────────
+// ── /mod: event staff tools (Event Manager role) ─────────────────────
 
-const staffCommand = command('staff', 'emojitown event staff tools (Event Manager role)')
-  // Hidden from regular members by default. Admins grant the Event Manager role
-  // access under Server Settings → Integrations → emojitown → /staff.
+const modCommand = command('mod', 'Event staff tools')
+  // Hidden from regular members. Admins let the staff role see it under
+  // Server Settings → Integrations → emojitown → /mod.
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-  .addSubcommandGroup((g) =>
-    g
-      .setName('event')
-      .setDescription('Pause or resume events')
-      .addSubcommand((s) =>
-        s.setName('pause').setDescription('Stop new gameplay').addStringOption(eventOpt(true, 'Event ID')).addStringOption(reasonOpt),
-      )
-      .addSubcommand((s) => s.setName('resume').setDescription('Resume a paused event').addStringOption(eventOpt(true, 'Event ID'))),
+  .addSubcommand((s) => s.setName('pause').setDescription('Pause a game (progress is kept)').addStringOption(gameOpt).addStringOption(reasonOpt))
+  .addSubcommand((s) => s.setName('resume').setDescription('Resume a paused game').addStringOption(gameOpt))
+  .addSubcommand((s) =>
+    s
+      .setName('exclude')
+      .setDescription('Stop a member from playing')
+      .addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true))
+      .addStringOption((o) => o.setName('game').setDescription('Which game').setRequired(true).addChoices(...GAMES, { name: 'All games', value: 'all' }))
+      .addStringOption(reasonOpt),
   )
-  .addSubcommandGroup((g) =>
-    g
-      .setName('member')
-      .setDescription('Participation exclusions')
-      .addSubcommand((s) =>
-        s
-          .setName('exclude')
-          .setDescription('Block a member from features')
-          .addUserOption((o) => o.setName('member').setDescription('Member').setRequired(true))
-          .addStringOption((o) => o.setName('feature').setDescription('Feature').setRequired(true).addChoices(...FEATURE_CHOICES, { name: 'All', value: 'all' }))
-          .addStringOption(reasonOpt),
-      )
-      .addSubcommand((s) =>
-        s
-          .setName('include')
-          .setDescription('Restore eligibility')
-          .addUserOption((o) => o.setName('member').setDescription('Member').setRequired(true))
-          .addStringOption((o) => o.setName('feature').setDescription('Feature').setRequired(true).addChoices(...FEATURE_CHOICES, { name: 'All', value: 'all' }))
-          .addStringOption(reasonOpt),
-      ),
+  .addSubcommand((s) =>
+    s
+      .setName('include')
+      .setDescription('Let an excluded member play again')
+      .addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true))
+      .addStringOption((o) => o.setName('game').setDescription('Which game').setRequired(true).addChoices(...GAMES, { name: 'All games', value: 'all' }))
+      .addStringOption(reasonOpt),
   )
-  .addSubcommandGroup((g) =>
-    g
-      .setName('snowball')
-      .setDescription('Snowball Fights staff tools')
-      .addSubcommand((s) =>
-        s
-          .setName('preview')
-          .setDescription('Preview a snowball message privately')
-          .addStringOption((o) =>
-            o
-              .setName('outcome')
-              .setDescription('Which message')
-              .setRequired(true)
-              .addChoices(
-                { name: 'hit', value: 'hit' },
-                { name: 'miss', value: 'miss' },
-                { name: 'warmup', value: 'warmup' },
-                { name: 'collect', value: 'collect' },
-              ),
-          ),
-      ),
+  .addSubcommand((s) => s.setName('cancel-visitor').setDescription('Send the current Halloween visitor away (no rewards)').addStringOption(reasonOpt))
+  .addSubcommand((s) =>
+    s
+      .setName('preview')
+      .setDescription('See what members will see (nothing is saved)')
+      .addStringOption(gameOpt)
+      .addIntegerOption((o) => o.setName('day').setDescription('Advent: which door').setMinValue(1).setMaxValue(31))
+      .addStringOption((o) => o.setName('visitor').setDescription('Halloween: which visitor').setAutocomplete(true)),
   )
-  .addSubcommandGroup((g) =>
-    g
-      .setName('halloween')
-      .setDescription('Trick or Treat staff tools')
-      .addSubcommand((s) =>
-        s
-          .setName('preview')
-          .setDescription('A private sample encounter (nothing saved)')
-          .addStringOption((o) => o.setName('visitor').setDescription('Visitor name or ID').setAutocomplete(true)),
-      )
-      .addSubcommand((s) => s.setName('cancel').setDescription('Send the current visitor away without rewards').addStringOption(reasonOpt))
-      .addSubcommand((s) => s.setName('reconcile').setDescription('Recheck the Champion role and retry pending changes')),
+  .addSubcommand((s) =>
+    s
+      .setName('candy-history')
+      .setDescription("A member's candy transactions")
+      .addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)),
   )
-  .addSubcommandGroup((g) =>
-    g
-      .setName('advent')
-      .setDescription('Advent Calendar staff tools')
-      .addSubcommand((s) =>
-        s
-          .setName('preview')
-          .setDescription('See a door as members will')
-          .addIntegerOption((o) => o.setName('day').setDescription('Door number').setRequired(true).setMinValue(1).setMaxValue(31))
-          .addStringOption(eventOpt(true, 'Event ID')),
-      )
-      .addSubcommand((s) => s.setName('validate').setDescription('List calendar problems').addStringOption(eventOpt(true, 'Event ID')))
-      .addSubcommand((s) =>
-        s
-          .setName('post')
-          .setDescription('Post or repair the announcement for an unlocked door')
-          .addIntegerOption((o) => o.setName('day').setDescription('Door number').setRequired(true).setMinValue(1).setMaxValue(31))
-          .addStringOption(eventOpt(true, 'Event ID')),
-      ),
+  .addSubcommand((s) =>
+    s
+      .setName('repost-door')
+      .setDescription('Post an Advent door announcement again')
+      .addIntegerOption((o) => o.setName('day').setDescription('Door number').setRequired(true).setMinValue(1).setMaxValue(31)),
   )
-  .addSubcommandGroup((g) =>
-    g
-      .setName('candy')
-      .setDescription('Candy Counter staff tools')
-      .addSubcommand((s) =>
-        s
-          .setName('inspect')
-          .setDescription("A member's candy history")
-          .addUserOption((o) => o.setName('member').setDescription('Member').setRequired(true))
-          .addStringOption(eventOpt(false, 'Limit to an event')),
-      ),
-  )
-  .addSubcommand(seasonContent(false));
+  .addSubcommand((s) => s.setName('fix-role').setDescription('Re-check who should have the Halloween Champion role'));
 
-export const commands = [...memberCommands, adminCommand, staffCommand];
+export const commands = [...memberCommands, setupCommand, adminCommand, modCommand];
 
 /**
- * Required level for a command key (`command`, `command sub` or `command group sub`).
- * Discord hides /admin and /staff from members by default; this is the bot's own
- * check, which also holds if a server overrides those defaults.
+ * Required level for a command key (`command` or `command sub`). Discord hides
+ * /setup, /admin and /mod from members by default; this is the bot's own check,
+ * which also holds if a server changes those defaults.
  */
 export function levelFor(key: string): Level {
-  if (key === 'admin' || key.startsWith('admin ')) return 'admin';
-  if (key === 'staff' || key.startsWith('staff ')) return 'moderator';
+  const top = key.split(' ')[0];
+  if (top === 'setup' || top === 'admin') return 'admin';
+  if (top === 'mod') return 'moderator';
   return 'member';
 }

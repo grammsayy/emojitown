@@ -420,7 +420,7 @@ export function itemInfo(ctx: Ctx, guildId: string, userId: string, query: strin
   const ev = resolveViewEvent(ctx, guildId, 'halloween', eventId);
   const pack = packFor(ctx, ev);
   const found = searchItem(pack, query);
-  if (!found) throw new UserError(`No item matches "${query}". Try \`/halloween missing\` or \`/halloween inventory\` to browse.`);
+  if (!found) throw new UserError(`No item matches "${query}". Use \`/inventory\` and its Missing items button to browse.`);
   const r = ctx.db
     .prepare('SELECT count, first_at FROM hw_items WHERE guild_id = ? AND event_id = ? AND user_id = ? AND item_id = ?')
     .get(guildId, ev.id, userId, found.item.id) as { count: number; first_at: number } | undefined;

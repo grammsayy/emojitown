@@ -4,24 +4,19 @@ import {
   doorTimes,
   editDoor,
   getDoor,
+  listDoors,
   markPosted,
   openDoor,
   progress,
-  publishCalendar,
   requireUnlocked,
-  setClaimDeadline,
-  validateCalendar,
   type Door,
   type DoorState,
   type OpenResult,
 } from '../../domain/advent.js';
-import { audit } from '../../domain/audit.js';
-import { addChannel, getChannel, getConfig, updateConfig, type GuildConfig } from '../../domain/config.js';
+import { getChannel, getConfig, type GuildConfig } from '../../domain/config.js';
 import { consumePending, createPending } from '../../domain/confirmations.js';
-import { tx } from '../../domain/context.js';
 import { UserError } from '../../domain/errors.js';
 import { requireEvent, type SeasonEvent } from '../../domain/events.js';
-import { parseTime } from '../../util/time.js';
 import { reply, type Button, type ChatInput, type Component, type HandlerSet, type Modal } from '../interaction.js';
 import { assertLevel, fetchTextChannel, type Bot } from '../runtime.js';
 import { button, cid, COLORS, embed, field, linkButton, row, when } from '../ui.js';
@@ -34,7 +29,7 @@ export function policyText(policy: GuildConfig['adventPolicy'], deadline: number
     : 'Each door can be claimed on its own day only, until local midnight. After that, its content stays readable.';
 }
 
-function doorEmbed(ev: SeasonEvent, door: Door): EmbedBuilder {
+export function doorEmbed(ev: SeasonEvent, door: Door): EmbedBuilder {
   const e = embed(COLORS.advent, `🎄 Door ${door.day}: ${door.title}`, door.message);
   if (door.imageUrl) e.setImage(door.imageUrl);
   e.setFooter({ text: `emojitown · ${ev.name}` });
@@ -61,14 +56,19 @@ function openResultMessage(r: OpenResult) {
   return { embeds: [e], components: doorComponents(r.event, r.door) };
 }
 
-function calendarView(bot: Bot, guildId: string, userId: string, eventId: string | null) {
+export function calendarView(bot: Bot, guildId: string, userId: string, eventId: string | null) {
   const cal = calendar(bot.ctx, guildId, userId, eventId);
+  const prog = progress(bot.ctx, guildId, userId, cal.event.id);
   const lines = cal.days.map(
     (d) => `${STATE_ICON[d.state]} **${d.day}**${d.state === 'locked' ? ` · opens ${when(d.times.unlockAt)}` : d.title ? ` · ${d.title}` : ''}`,
   );
   const deadline = cal.days.length ? cal.days[cal.days.length - 1]!.times.claimEndsAt : null;
   const e = embed(COLORS.advent, `📅 ${cal.event.name}`, lines.join('\n'))
-    .addFields(field('Legend', '🎁 available · ✅ claimed · ⌛ expired (readable, no reward) · 🔒 locked'), field('Catch-up policy', policyText(cal.policy, deadline)));
+    .addFields(
+      field('Your progress', `${prog.claimedDays.length}/${prog.doorCount} doors opened · 🍬 ${prog.candy} candy earned`),
+      field('Legend', '🎁 available · ✅ opened · ⌛ missed (still readable, no reward) · 🔒 not yet'),
+      field('Missed a day?', policyText(cal.policy, deadline)),
+    );
   const released = cal.days.filter((d) => d.state !== 'locked');
   const components = released.length
     ? [
@@ -91,7 +91,7 @@ function calendarView(bot: Bot, guildId: string, userId: string, eventId: string
 
 /** The public daily announcement. */
 export function announcementMessage(ev: SeasonEvent, door: Door, claimEndsAt: number, policy: GuildConfig['adventPolicy']) {
-  const e = embed(COLORS.advent, `🎁 Door ${door.day} is open!`, `**${door.title}**\n\nPress **Open Door** or use \`/advent open\` to see today's surprise${door.candy ? ` and collect **${door.candy} candy**` : ''}.`)
+  const e = embed(COLORS.advent, `🎁 Door ${door.day} is open!`, `**${door.title}**\n\nPress **Open Door** or use \`/advent\` to see today's surprise${door.candy ? ` and collect **${door.candy} candy**` : ''}.`)
     .addFields(field('Claim by', when(claimEndsAt)), field('Catch-up', policyText(policy, claimEndsAt)));
   return {
     embeds: [e],
@@ -123,67 +123,17 @@ export function recoveryMessage(ev: SeasonEvent, doors: Door[]) {
   };
 }
 
-async function setup(bot: Bot, i: ChatInput) {
-  const o = i.options;
-  const unlock = o.getString('unlock_time');
-  const announce = o.getString('announce_time');
-  const unlockTime = unlock !== null ? parseTime(unlock) : undefined;
-  const announceTime = announce !== null ? parseTime(announce) : undefined;
-  if (unlockTime === null || announceTime === null) throw new UserError('Times must look like 09:00.');
+/** Opens the form for writing one door. */
+export async function showDoorForm(bot: Bot, i: ChatInput, ev: SeasonEvent, day: number, candy: number | null, reason: string | null) {
+  if (ev.state === 'ended') throw new UserError('This Advent calendar has ended and its doors are frozen.');
   const cfg = getConfig(bot.ctx, i.guildId);
-  if ((announceTime ?? cfg.adventAnnounceTime) < (unlockTime ?? cfg.adventUnlockTime)) {
-    throw new UserError('The announcement time must be at or after the unlock time, so the posted door is already open.');
-  }
-  const channel = o.getChannel('channel');
-  const eventId = o.getString('event');
-  const deadline = o.getString('claim_deadline');
-  if (deadline && !eventId) throw new UserError('Pick the `event` whose claim deadline you want to set.');
-  tx(bot.ctx, () => {
-    const change = updateConfig(bot.ctx, i.guildId, {
-      adventDoorCount: o.getInteger('doors') ?? undefined,
-      adventUnlockTime: unlockTime,
-      adventAnnounceTime: announceTime,
-      adventPolicy: (o.getString('policy') as GuildConfig['adventPolicy'] | null) ?? undefined,
-    });
-    let previous: string[] = [];
-    if (channel) previous = addChannel(bot.ctx, i.guildId, 'advent', channel.id);
-    if (Object.keys(change.after).length || channel) {
-      audit(bot.ctx, {
-        guildId: i.guildId,
-        actorId: i.user.id,
-        action: 'advent.setup',
-        before: { ...change.before, ...(channel ? { channel: previous[0] ?? null } : {}) },
-        after: { ...change.after, ...(channel ? { channel: channel.id } : {}) },
-      });
-    }
-    if (eventId && deadline) setClaimDeadline(bot.ctx, i.guildId, eventId, deadline, i.user.id);
-  });
-  const c = getConfig(bot.ctx, i.guildId);
-  const ch = getChannel(bot.ctx, i.guildId, 'advent');
-  const e = embed(COLORS.staff, '🎄 Advent setup').addFields(
-    field('Channel', ch ? `<#${ch}>` : 'Not set', true),
-    field('Doors', String(c.adventDoorCount), true),
-    field('Unlock / announce', `${c.adventUnlockTime} / ${c.adventAnnounceTime} (${c.timezone})`, true),
-    field('Policy', policyText(c.adventPolicy, null)),
-  );
-  if (eventId) {
-    const ev = requireEvent(bot.ctx, i.guildId, eventId, 'advent');
-    e.addFields(field('Claim deadline', `\`${ev.id}\`: ${ev.claimDeadlineLocal?.replace('T', ' ') ?? 'end of event'} (${c.timezone})`));
-  }
-  await reply(i, { embeds: [e] });
-}
-
-async function edit(bot: Bot, i: ChatInput) {
-  const day = i.options.getInteger('day', true);
-  const ev = requireEvent(bot.ctx, i.guildId, i.options.getString('event', true), 'advent');
-  if (ev.state === 'ended') throw new UserError('This Advent event has ended and its content is frozen.');
-  const reason = i.options.getString('reason');
-  if (ev.adventPublishedAt && !reason) throw new UserError('This calendar is published. Add a `reason` to record this correction.');
+  if (day > cfg.adventDoorCount) throw new UserError(`The calendar has ${cfg.adventDoorCount} doors. Change that with \`/setup advent doors:\`.`);
+  if (ev.adventPublishedAt && !reason) throw new UserError('This calendar is already live. Add a `reason` so the change is logged.');
   const existing = getDoor(bot.ctx, i.guildId, ev.id, day);
   const token = createPending(bot.ctx, i.guildId, i.user.id, 'advent.edit', {
     eventId: ev.id,
     day,
-    candy: i.options.getInteger('candy') ?? existing?.candy ?? null,
+    candy: candy ?? existing?.candy ?? null,
     reason,
   });
   const input = (id: string, label: string, style: TextInputStyle, value: string | null | undefined, required: boolean, max: number) => {
@@ -210,6 +160,7 @@ async function editSubmit(bot: Bot, i: Component, [token]: string[]) {
   assertLevel(bot, m.member, 'admin');
   const { payload } = consumePending<{ eventId: string; day: number; candy: number | null; reason: string | null }>(bot.ctx, m.guildId, m.user.id, token!);
   const f = (id: string) => m.fields.getTextInputValue(id);
+  const before = getDoor(bot.ctx, m.guildId, payload.eventId, payload.day);
   const door = editDoor(
     bot.ctx,
     m.guildId,
@@ -220,15 +171,35 @@ async function editSubmit(bot: Bot, i: Component, [token]: string[]) {
     payload.reason,
   );
   const ev = requireEvent(bot.ctx, m.guildId, payload.eventId);
-  await reply(m, { content: `Saved door ${door.day} (🍬 ${door.candy} candy). Preview:`, embeds: [doorEmbed(ev, door)] });
+  const changes: string[] = [];
+  if (!before) changes.push(`**Door ${door.day}:** empty → written`);
+  else {
+    const cmp: [string, unknown, unknown][] = [
+      ['Title', before.title, door.title],
+      ['Message', before.message, door.message],
+      ['Image', before.imageUrl, door.imageUrl],
+      ['Link', before.linkUrl, door.linkUrl],
+      ['Trivia answer', before.triviaAnswer, door.triviaAnswer],
+      ['Candy', before.candy, door.candy],
+    ];
+    for (const [label, a, b] of cmp) {
+      if (a === b) continue;
+      changes.push(label === 'Message' ? '**Message:** updated' : `**${label}:** ${a ?? 'none'} → ${b ?? 'none'}`);
+    }
+  }
+  const filled = listDoors(bot.ctx, m.guildId, ev.id).length;
+  const total = getConfig(bot.ctx, m.guildId).adventDoorCount;
+  await reply(m, {
+    content: `${changes.length ? changes.join('\n') : `Door ${door.day}: nothing changed.`}\n**Doors written:** ${filled}/${total}. This is how members will see it:`,
+    embeds: [doorEmbed(ev, door)],
+  });
 }
 
-async function previewCmd(bot: Bot, i: ChatInput) {
-  const ev = requireEvent(bot.ctx, i.guildId, i.options.getString('event', true), 'advent');
-  const day = i.options.getInteger('day', true);
-  const door = getDoor(bot.ctx, i.guildId, ev.id, day);
-  if (!door) throw new UserError(`Door ${day} has no content yet. Use \`/admin advent edit\`.`);
-  const cfg = getConfig(bot.ctx, i.guildId);
+/** A door exactly as members will see it, plus its schedule. Nothing is saved. */
+export function doorPreview(bot: Bot, guildId: string, ev: SeasonEvent, day: number) {
+  const door = getDoor(bot.ctx, guildId, ev.id, day);
+  if (!door) throw new UserError(`Door ${day} is empty. Write it with \`/setup door day:${day}\`.`);
+  const cfg = getConfig(bot.ctx, guildId);
   const t = doorTimes(ev, cfg, day);
   const e = doorEmbed(ev, door).addFields(
     field('Reward', door.candy ? `🍬 ${door.candy} candy` : 'No candy'),
@@ -236,32 +207,7 @@ async function previewCmd(bot: Bot, i: ChatInput) {
     field('Claim by', when(t.claimEndsAt), true),
   );
   if (door.triviaAnswer) e.addFields(field('Trivia answer (hidden behind Reveal Answer)', `||${door.triviaAnswer}||`));
-  await reply(i, { content: '**Preview** (no claim or reward saved):', embeds: [e] });
-}
-
-async function validateCmd(bot: Bot, i: ChatInput) {
-  const eventId = i.options.getString('event', true);
-  const issues = validateCalendar(bot.ctx, i.guildId, eventId);
-  const ev = requireEvent(bot.ctx, i.guildId, eventId, 'advent');
-  if (!getChannel(bot.ctx, i.guildId, 'advent')) issues.unshift('No Advent channel is configured.');
-  await reply(i, {
-    embeds: [
-      embed(
-        issues.length ? COLORS.warn : COLORS.hit,
-        issues.length ? `${issues.length} problem${issues.length === 1 ? '' : 's'} found` : 'Calendar looks good ✅',
-        issues.length
-          ? `• ${issues.slice(0, 40).join('\n• ')}`
-          : ev.adventPublishedAt
-            ? 'This calendar is published.'
-            : 'Run `/admin advent publish` to freeze it for release.',
-      ),
-    ],
-  });
-}
-
-async function publish(bot: Bot, i: ChatInput) {
-  const ev = publishCalendar(bot.ctx, i.guildId, i.options.getString('event', true), i.user.id);
-  await reply(i, `📅 Published **${ev.name}**. Later changes need a reason and never re-award earlier claims.`);
+  return { content: '**Preview** (no claim or reward saved):', embeds: [e] };
 }
 
 /** Posts (or re-posts) the announcement for an unlocked door. Existing claims are untouched. */
@@ -275,34 +221,23 @@ export async function postDoor(bot: Bot, guildId: string, ev: SeasonEvent, day: 
   return msg.url;
 }
 
-async function postCmd(bot: Bot, i: ChatInput) {
-  const ev = requireEvent(bot.ctx, i.guildId, i.options.getString('event', true), 'advent');
-  const url = await postDoor(bot, i.guildId, ev, i.options.getInteger('day', true));
-  audit(bot.ctx, { guildId: i.guildId, actorId: i.user.id, action: 'advent.post', eventId: ev.id, after: { day: i.options.getInteger('day', true), url } });
-  await reply(i, `Posted: ${url}`);
-}
-
-async function progressCmd(bot: Bot, i: ChatInput) {
-  const p = progress(bot.ctx, i.guildId, i.user.id, i.options.getString('event'));
-  const e = embed(COLORS.advent, `🎄 Your Advent progress: ${p.event.name}`).addFields(
-    field('Doors opened', `${p.claimedDays.length}/${p.doorCount}`, true),
-    field('Advent candy earned', `🍬 ${p.candy}`, true),
-    field('Claimed days', p.claimedDays.join(', ') || 'None yet'),
-  );
-  await reply(i, { embeds: [e] });
+/** `/advent`: opens today's door (or the chosen day); on days without a door it shows the calendar. */
+async function adventCmd(bot: Bot, i: ChatInput) {
+  const day = i.options.getInteger('day');
+  if (day === null) {
+    const cal = calendar(bot.ctx, i.guildId, i.user.id);
+    if (cal.today === null) return reply(i, { content: 'There is no door for today. Here is the calendar:', ...calendarView(bot, i.guildId, i.user.id, cal.event.id) });
+    const t = cal.days[cal.today - 1]!;
+    if (t.state === 'locked') {
+      return reply(i, { content: `Today's door opens ${when(t.times.unlockAt)}. Here is the calendar:`, ...calendarView(bot, i.guildId, i.user.id, cal.event.id) });
+    }
+  }
+  return reply(i, openResultMessage(openDoor(bot.ctx, i.guildId, i.user.id, day)));
 }
 
 export const adventHandlers: HandlerSet = {
   chat: {
-    'advent calendar': (bot, i) => reply(i, calendarView(bot, i.guildId, i.user.id, i.options.getString('event'))),
-    'advent open': (bot, i) => reply(i, openResultMessage(openDoor(bot.ctx, i.guildId, i.user.id, i.options.getInteger('day'), i.options.getString('event')))),
-    'advent progress': progressCmd,
-    'admin advent setup': setup,
-    'admin advent edit': edit,
-    'staff advent preview': previewCmd,
-    'staff advent validate': validateCmd,
-    'admin advent publish': publish,
-    'staff advent post': postCmd,
+    advent: adventCmd,
   },
   components: {
     advedit: editSubmit,

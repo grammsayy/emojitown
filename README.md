@@ -45,40 +45,59 @@ Register commands with `docker run --rm --env-file .env emojitown-bot node dist/
 
 Development: `npm test` (Vitest), `npm run typecheck`, `npm run dev` (runs from source with tsx).
 
-## Command access
+## Commands
 
-| Command | Who sees it on Discord | Who the bot lets through |
-| --- | --- | --- |
-| Member commands (`/collect`, `/halloween inventory`, `/advent open`, `/candy balance`, …) | Everyone | Everyone |
-| `/admin …` (setup, events, corrections, candy adjustments, content import/export) | Members with **Manage Server** | Server owner and **Manage Server** only |
-| `/staff …` (pause/resume, exclusions, previews, cancel visitor, reconcile, Advent post, candy inspect) | Members with **Manage Server** by default | Administrators and the configured **Event Manager** role(s) |
+### Setup (admins, Manage Server): about 3 commands to go live
 
-Discord can only restrict whole top-level commands, not individual subcommands, so all staff actions live under
-`/admin` and `/staff`. Both are hidden from regular members by default. The bot also checks permissions on every
-command, button and form itself, so overriding Discord's command settings never grants more access than this table.
+| Command | What it does |
+| --- | --- |
+| `/setup server` | Timezone, staff role, log channel, support link. |
+| `/setup halloween channel:#spooky` | Creates this year's Halloween season (Oct 1–31 by default), turns on automatic start, and starts it right away if today is within the dates. Optional: `champion_role`, `start`/`end`, `wait_min`/`wait_max`/`visit_length` (durations like `30s`, `10m`, `2h`, `1d`; `m` = minutes), `candy_per_win`, `daily_candy_limit`, `remove_channel`. |
+| `/setup snowball channel:#snow` | Same for Snowball Fights (Dec 1–31 by default). |
+| `/setup advent channel:#advent` | Same for the Advent Calendar (Dec 1–24). Optional: `start`, `doors`, `unlock_time`, `catch_up`. |
+| `/setup door day:1` | Write one Advent door in a form. The calendar starts on its own once every door is written. |
+| `/setup content game:halloween` | Without a file: download the current names/messages/artwork JSON. With `file:`: upload your edited version (applies to the live season too). |
+| `/setup status` | Checklist of what is set up, live, or still missing. |
 
-**One manual step:** so Event Managers can see `/staff`, open **Server Settings → Integrations → emojitown → /staff**
-and add the Event Manager role. (Bots cannot change these command settings themselves.)
+Every setup command replies with **what changed** (`**Timezone:** UTC → Europe/Copenhagen`), or says
+**Nothing changed** when it didn't, followed by the current settings and anything still needed.
+
+### Running the games
+
+| `/admin …` (Manage Server) | `/mod …` (staff role) |
+| --- | --- |
+| `start`, `end` (with keep/remove Champion role), `give-candy`, `undo-candy`, `fix-stats`, `fix-item`, `clear-warmup`, `announce`, `export`, `audit` | `pause`, `resume`, `exclude`, `include`, `cancel-visitor`, `preview`, `candy-history`, `repost-door`, `fix-role` |
+
+### Members
+
+`/collect` `/throw` `/stats` `/snowball join|leave` · `/trick` `/treat` `/inventory` · `/advent` · `/candy` ·
+`/leaderboard` `/events` `/help`
+
+### Who can see what
+
+`/setup`, `/admin` and `/mod` are hidden from regular members (they require **Manage Server** by default). The bot
+also checks permissions on every command, button and form itself, so changing Discord's command settings never
+grants more access. **One manual step:** so your staff role can see `/mod`, open
+**Server Settings → Integrations → emojitown → /mod** and add the role.
 
 Role safety: the Halloween Champion role must be a dedicated role with no moderation permissions, held by at most one
-member, and must not be `@everyone` or an Event Manager role, because the bot removes it from everyone except the winner.
-`@everyone` cannot be made an Event Manager role.
+member, and must not be `@everyone` or a staff role, because the bot removes it from everyone except the winner.
+`@everyone` cannot be made a staff role.
+
+### Troubleshooting
+
+- **Every command says the bot "isn't a member of this server":** it was added as commands only. Use the invite link
+  in that message (it also prints in the console at startup) and choose your server.
+- **Startup says the token was rejected:** reset the token on the Bot tab and update `.env`.
+- **Startup says "Server Members Intent":** turn it on under Bot → Privileged Gateway Intents.
 
 ## First-time setup in Discord
 
-Follow section 11 of the spec. In short:
-
-1. `/admin season setup timezone:Europe/Copenhagen support:#help log_channel:#staff-log event_manager_role:@Event Manager`
-2. `/admin season channel feature:snowball action:add channel:#snowball-fight` (also `halloween` and `advent`)
-3. `/admin event create feature:halloween name:Halloween 2026` (also snowball and advent). Default dates are filled in;
-   adjust them with `/admin event schedule`, which opens a form and can turn on automatic start.
-4. Import content: `/admin season content feature:halloween action:import file:<pack.json>` (and `snowball`). Start from
-   `/admin season content … action:export` to get the current pack as a template.
-5. `/admin halloween champion role:@Halloween Champion end_policy:keep`, and optionally `/admin candy setup`, `/admin halloween setup`, `/admin advent setup`.
-6. Fill the 24 doors with `/admin advent edit day:<n> event:advent-2026` (form), then `/staff advent validate` and `/admin advent publish`.
-7. Give the Event Manager role access to `/staff` (see **Command access** above).
-8. `/admin season check`, preview with `/staff snowball preview`, `/staff halloween preview` and `/staff advent preview`, then `/admin season announce`
-   and `/admin event start` (or let scheduled events start themselves).
+1. `/setup server timezone:Europe/Copenhagen staff_role:@Event Staff log_channel:#staff-log support:#help`
+2. `/setup halloween channel:#spooky champion_role:@Halloween Champion`
+3. `/setup content game:halloween` to download the template, fill in the real visitors, then upload it with `file:`.
+4. Before December: `/setup snowball channel:#snow`, `/setup advent channel:#advent`, then `/setup door day:1` … `day:24`.
+5. `/setup status` any time to see what's left.
 
 ## How it works
 
@@ -113,7 +132,7 @@ Reliability notes:
 
 ## Content packs
 
-Snowball pack (`/admin season content feature:snowball`):
+Snowball pack (`/setup content game:snowball`):
 
 ```json
 {
@@ -131,27 +150,29 @@ Halloween pack: `visitors` is a list of `{ id, name, image?, trickRequest?, trea
 item is `{ id, name, rarity: "common" | "uncommon" | "rare", description, image? }` with exactly one of each rarity, and
 `messages` holds `trickRequest, treatRequest, win, duplicate, wrong, expired, cancelled` (placeholders `{name}`,
 `{winner}`, `{item}`, `{rarity}`). IDs are stable: an import may rename things but may not remove an ID used by the
-current pack. Running events keep the pack version they started with.
+current pack, so uploading a new version is safe even while Halloween is live (the live season switches to it).
 
 The built-in content is placeholder text so the bot works out of the box. Replace it with the final emojitown
 names, artwork and wording before launch (spec section 13).
 
 ## Decisions where the spec left room
 
-- **Forms.** `/admin event schedule` and `/admin advent edit` open Discord forms. Discord forms hold at most five fields,
-  so `/admin advent edit` takes `candy` and `reason` as command options. The other setup commands (`/admin season setup`,
-  `/admin halloween setup`, `/admin advent setup`, `/admin snowball setup`, `/admin candy setup`) use command options as their guided
-  interface and show the saved result and remaining tasks.
-- **Confirmations.** `/admin snowball correct`, `/admin candy adjust`, `/admin candy reverse`, `/admin event end`, `/admin season timezone`
-  and `/admin season announce` show a preview with Confirm/Cancel. Only the requester can confirm, once, and permissions are
-  checked again at that moment.
-- **Timezone.** Event dates are stored as local dates, so changing the timezone moves them to the same local times in
-  the new zone. The confirmation shows the before/after.
-- **Advent settings** (door count, unlock/announcement time, catch-up policy) are server-wide. The claim deadline is
-  per event, set in the schedule form or `/admin advent setup event:… claim_deadline:…`.
-- **Exclusions.** Excluded members can still read Advent doors but receive no reward. Snowball opt-outs keep their
-  place on the leaderboard (their progress is preserved), while excluded or departed members leave the standings.
-  The candy leaderboard hides departed members and members excluded from every feature.
+- **Simplified commands.** One `/setup <game>` command creates the season with default dates, turns on automatic
+  start and starts it if it's due, instead of separate create/schedule/check/start steps. Advent calendars publish
+  themselves when they start. The spec's separate `/halloween missing`, `/halloween visitors`, `/advent calendar`,
+  `/advent progress` and `/candy history` views are buttons on `/inventory`, `/advent` and `/candy`; `/support` is part
+  of `/help`; `/season status` is `/events`. Rarity weights stay at the spec's 70/25/5 and are not exposed as options.
+- **Forms.** `/setup door` opens a Discord form (5 fields: title, message, image, link, trivia answer); `candy` and
+  `reason` are command options.
+- **Confirmations.** `/admin end`, `/admin give-candy`, `/admin undo-candy`, `/admin fix-stats` and `/admin announce`
+  show a preview with Confirm/Cancel. Only the requester can confirm or cancel, once, and permissions are checked again.
+- **Timezone.** Event dates are stored as local dates, so changing the timezone keeps the same local times in the new
+  zone; `/setup server` lists each season's moved start time.
+- **Advent settings** (door count, unlock time, catch-up) are server-wide; with catch-up on, missed doors can be
+  claimed until the calendar ends.
+- **Exclusions.** Excluded members can still read Advent doors but receive no reward. Members who `/snowball leave`
+  keep their place on the leaderboard (their progress is preserved), while excluded or departed members leave the
+  standings. The candy leaderboard hides departed members and members excluded from every game.
 - **Snowball corrections** keep `available = collected − hits − misses`, so totals stay consistent and nonnegative.
-- **Missing channels** pause the affected running event and alert staff in the log channel; resume with
-  `/staff event resume` after fixing it.
+- **Missing channels** pause the affected game and alert staff in the log channel; resume with `/mod resume` after
+  fixing it.
