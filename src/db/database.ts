@@ -1,6 +1,84 @@
-import Database from 'better-sqlite3';
+import { DatabaseSync, type StatementSync } from 'node:sqlite';
 
-export type DB = Database.Database;
+/**
+ * Thin wrapper over Node's built-in SQLite (`node:sqlite`). It needs no native
+ * compilation, so installs work on any machine with Node 22.13+.
+ */
+/** The statement surface the app uses. Parameters are validated by SQLite at run time. */
+export interface Statement {
+  run(...params: unknown[]): { changes: number; lastInsertRowid: number };
+  get(...params: unknown[]): unknown;
+  all(...params: unknown[]): unknown[];
+}
+
+function wrap(stmt: StatementSync): Statement {
+  return {
+    run: (...params) => {
+      const r = stmt.run(...(params as never[]));
+      return { changes: Number(r.changes), lastInsertRowid: Number(r.lastInsertRowid) };
+    },
+    get: (...params) => stmt.get(...(params as never[])),
+    all: (...params) => stmt.all(...(params as never[])),
+  };
+}
+
+export class DB {
+  private readonly db: DatabaseSync;
+  private readonly statements = new Map<string, Statement>();
+  private depth = 0;
+
+  constructor(path: string) {
+    this.db = new DatabaseSync(path);
+  }
+
+  /** Prepared statements are cached by SQL text. */
+  prepare(sql: string): Statement {
+    let stmt = this.statements.get(sql);
+    if (!stmt) {
+      stmt = wrap(this.db.prepare(sql));
+      this.statements.set(sql, stmt);
+    }
+    return stmt;
+  }
+
+  exec(sql: string): void {
+    this.db.exec(sql);
+  }
+
+  get inTransaction(): boolean {
+    return this.depth > 0;
+  }
+
+  /** Runs `fn` inside BEGIN IMMEDIATE … COMMIT, rolling back if it throws. Not reentrant; nest via `tx()`. */
+  transaction<T>(fn: () => T): T {
+    this.db.exec('BEGIN IMMEDIATE');
+    this.depth++;
+    try {
+      const result = fn();
+      this.db.exec('COMMIT');
+      return result;
+    } catch (err) {
+      this.db.exec('ROLLBACK');
+      throw err;
+    } finally {
+      this.depth--;
+    }
+  }
+
+  userVersion(): number {
+    return Number((this.db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version);
+  }
+
+  /** Writes a consistent copy of the database to `path` (used by tests to simulate restarts). */
+  copyTo(path: string): void {
+    this.db.prepare('VACUUM INTO ?').run(path);
+  }
+
+  close(): void {
+    this.statements.clear();
+    this.db.close();
+  }
+}
 
 /**
  * Ordered schema migrations. Each entry runs once, tracked through
@@ -286,20 +364,19 @@ const MIGRATIONS: string[] = [
 ];
 
 export function migrate(db: DB): void {
-  const current = db.pragma('user_version', { simple: true }) as number;
-  for (let i = current; i < MIGRATIONS.length; i++) {
+  for (let i = db.userVersion(); i < MIGRATIONS.length; i++) {
     db.transaction(() => {
       db.exec(MIGRATIONS[i]!);
-      db.pragma(`user_version = ${i + 1}`);
-    })();
+      db.exec(`PRAGMA user_version = ${i + 1}`);
+    });
   }
 }
 
 export function openDatabase(path: string): DB {
-  const db = new Database(path);
-  if (path !== ':memory:') db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
-  db.pragma('busy_timeout = 5000');
+  const db = new DB(path);
+  if (path !== ':memory:') db.exec('PRAGMA journal_mode = WAL');
+  db.exec('PRAGMA foreign_keys = ON');
+  db.exec('PRAGMA busy_timeout = 5000');
   migrate(db);
   return db;
 }

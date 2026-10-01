@@ -37,7 +37,7 @@ export function tx<T>(ctx: Ctx, fn: () => T): T {
   pendingHooks.set(ctx, []);
   let result: T;
   try {
-    result = ctx.db.transaction(fn).immediate();
+    result = ctx.db.transaction(fn);
   } catch (err) {
     pendingHooks.delete(ctx);
     throw err;

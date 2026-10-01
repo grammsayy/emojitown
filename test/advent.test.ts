@@ -41,7 +41,7 @@ describe('unlocking', () => {
     const path = join(mkdtempSync(join(tmpdir(), 'emojitown-')), 'bot.db');
     const { ctx } = setup();
     // move the fully set up in-memory database to disk to simulate a restart
-    await ctx.db.backup(path);
+    ctx.db.copyTo(path);
     ctx.db = openDatabase(path);
     ctx.set('2026-12-01T10:00:00Z');
     expect(openDoor(ctx, GUILD, 'a').outcome).toBe('claimed');

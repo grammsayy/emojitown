@@ -15,7 +15,9 @@ license does not apply here. Credit for the original mechanics goes to its autho
 
 ## Running it
 
-Requirements: Node.js 20 or newer. Data is stored in a single SQLite file.
+Requirements: Node.js 22.13 or newer (Node 24 LTS recommended). Data is stored in a single SQLite file using Node's
+built-in `node:sqlite`, so nothing needs compiling and no C++ build tools are required. Node prints a one-line
+`ExperimentalWarning` about SQLite at startup; it is harmless.
 
 1. **Create the application** at <https://discord.com/developers/applications>.
    - Under **Bot**, copy the token and enable the **Server Members Intent** (privileged). It is used to notice members

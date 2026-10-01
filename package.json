@@ -21,12 +21,10 @@
   },
   "homepage": "https://github.com/grammsayy/emojitown#readme",
   "dependencies": {
-    "better-sqlite3": "^13.0.3",
     "discord.js": "^14.27.0",
     "luxon": "^3.7.2"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^9.6.0",
     "@types/luxon": "^3.7.5",
     "@types/node": "^26.6.2",
     "tsx": "^4.23.15",
@@ -36,6 +34,6 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13"
   }
 }
