@@ -8,6 +8,7 @@ import { helpHandlers } from '../src/discord/handlers/help.js';
 import { seasonHandlers } from '../src/discord/handlers/season.js';
 import { snowballHandlers } from '../src/discord/handlers/snowball.js';
 import { manageHandlers } from '../src/discord/handlers/manage.js';
+import { visitorHandlers } from '../src/discord/handlers/visitors.js';
 
 function keys(cmd: RESTPostAPIChatInputApplicationCommandsJSONBody): string[] {
   const subs = (cmd.options ?? []).filter(
@@ -24,7 +25,7 @@ function keys(cmd: RESTPostAPIChatInputApplicationCommandsJSONBody): string[] {
 describe('slash commands', () => {
   const json = commands.map((c) => c.toJSON());
   const commandKeys = json.flatMap(keys);
-  const handlerKeys = [snowballHandlers, halloweenHandlers, adventHandlers, candyHandlers, seasonHandlers, helpHandlers, manageHandlers].flatMap((h) => Object.keys(h.chat ?? {}));
+  const handlerKeys = [snowballHandlers, halloweenHandlers, adventHandlers, candyHandlers, seasonHandlers, helpHandlers, manageHandlers, visitorHandlers].flatMap((h) => Object.keys(h.chat ?? {}));
 
   it('build, pass discord.js validation and fit Discord\'s 8000-character limit', () => {
     // Discord counts names, descriptions and choice names/values across the whole command tree.
@@ -44,7 +45,7 @@ describe('slash commands', () => {
   it('locks staff commands on Discord and leaves member commands open', () => {
     const manageGuild = PermissionFlagsBits.ManageGuild.toString();
     for (const c of json) {
-      if (['setup', 'admin', 'mod'].includes(c.name)) expect(c.default_member_permissions, c.name).toBe(manageGuild);
+      if (['setup', 'admin', 'mod', 'visitor'].includes(c.name)) expect(c.default_member_permissions, c.name).toBe(manageGuild);
       else expect(c.default_member_permissions ?? null, c.name).toBeNull();
     }
     expect(levelFor('setup halloween')).toBe('admin');

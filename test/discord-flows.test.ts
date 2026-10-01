@@ -307,7 +307,7 @@ describe('command visibility follows which games are live', () => {
   it('shows only the live game’s commands, and reports when they appear or disappear', async () => {
     const w = new World('2026-10-05T12:00:00Z');
     await w.tick();
-    expect(w.registered).toEqual(['admin', 'candy', 'events', 'help', 'leaderboard', 'mod', 'setup']);
+    expect(w.registered).toEqual(['admin', 'candy', 'events', 'help', 'leaderboard', 'mod', 'setup', 'visitor']);
 
     const setup = await w.command('owner', 'setup halloween', { channel: 'spooky' });
     expect(text(setup)).toContain('**Member commands:** now showing /inventory, /treat, /trick');
@@ -363,5 +363,75 @@ describe('changing visitor waits on a live Halloween', () => {
     await w.tick();
     expect(w.sent.some((s) => s.channelId === 'spooky')).toBe(true);
     expect(text(await w.command('owner', 'setup status'))).toContain('A visitor is in <#spooky> right now');
+  });
+});
+
+describe('custom Halloween visitors and classes', () => {
+  const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+  const picture = { url: 'https://cdn.discordapp.com/attachments/1/2/ghost.png', size: PNG.length, contentType: 'image/png' };
+
+  async function addVisitor(w: World, cls: string, fields: Record<string, string>, withPicture = false) {
+    const calls = await w.command('owner', 'visitor add', { class: cls, ...(withPicture ? { picture } : {}) });
+    expect(calls[0]!.type).toBe('modal');
+    return w.modal('owner', calls[0]!.payload.custom_id, fields);
+  }
+
+  it('creates visitors with pictures and texts, and rarer classes pay bonus candy', async () => {
+    vi.stubGlobal('fetch', async () => new Response(PNG, { headers: { 'content-type': 'image/png' } }));
+    const w = new World('2026-10-05T12:00:00Z');
+
+    const added = await addVisitor(w, 'rare', { name: 'Ghosty', greeting: 'Boo! Ghosty floats in.', trick: '{name} wants a spooky TRICK!', item: 'Ghost Pin' }, true);
+    const t = text(added);
+    expect(t).toContain('**Visitor:** none → Ghosty');
+    expect(t).toContain('**Class:** 🟣 Rare (+5 bonus candy)');
+    expect(t).toContain('**Picture:** added');
+    expect(t).toContain('**Collectible:** Ghost Pin');
+    expect(t).toContain('40 are built-in placeholders');
+    expect(added[0]!.payload.files.length).toBeGreaterThan(0);
+
+    const removed = await w.command('owner', 'visitor remove', { visitor: '__placeholders__' });
+    expect(text(removed)).toContain('**Active visitors now:** 1');
+
+    // Ghosty is the only visitor, so it is the one that appears, with its picture and texts.
+    await w.command('owner', 'setup halloween', { channel: 'spooky', wait_min: '10s', wait_max: '10s' });
+    recordActivity(w.ctx, 'g1', 'spooky');
+    w.ctx.advance(11_000);
+    w.ctx.rolls = [0, 0, 0.1];
+    await w.tick();
+    const post = w.sent.find((s) => s.channelId === 'spooky')!;
+    const payload = JSON.stringify(post.payload);
+    expect(payload).toContain('Rare visitor');
+    expect(payload).toContain('Boo! Ghosty floats in.');
+    expect(payload).toContain('Ghosty wants a spooky TRICK!');
+    expect(payload).toContain('attachment://');
+    expect(post.payload.files).toHaveLength(1);
+
+    const win = await w.button('alice', findCustomId(post.payload, 'hw|trick|')!, post.message);
+    expect(text(win)).toContain('+10 candy (includes +5 🟣 Rare bonus)');
+    expect(getBalance(w.ctx, 'g1', 'alice')).toBe(10);
+    expect(text(await w.command('alice', 'inventory'))).toContain('Ghost Pin');
+
+    // Editing reports the change; classes can be tuned.
+    const edit = await w.command('owner', 'visitor edit', { visitor: 'ghosty', class: 'legendary' });
+    expect(text(await w.modal('owner', edit[0]!.payload.custom_id, { name: 'Ghosty', greeting: 'Boo! Ghosty floats in.', trick: '{name} wants a spooky TRICK!', item: 'Ghost Pin' }))).toContain(
+      '**Class:** 🟣 Rare → 🟡 Legendary (+10 bonus candy)',
+    );
+    expect(text(await w.command('owner', 'setup class', { class: 'legendary', chance: 5, bonus_candy: 25 }))).toContain('+10 → +25');
+    expect(text(await w.command('owner', 'setup class', { class: 'legendary', chance: 5, bonus_candy: 25 }))).toContain('Nothing changed');
+
+    // Removing the last visitor is refused; with a second one, Ghosty is retired (Alice keeps her pin).
+    expect(text(await w.command('owner', 'visitor remove', { visitor: 'ghosty' }))).toContain('leave no visitors');
+    await addVisitor(w, 'common', { name: 'Batsy' });
+    expect(text(await w.command('owner', 'visitor remove', { visitor: 'ghosty' }))).toContain('**Retired:** Ghosty');
+    expect(text(await w.command('alice', 'inventory'))).toContain('Ghost Pin');
+    expect(text(await w.command('owner', 'visitor list'))).toContain('Batsy');
+    expect(text(await w.command('owner', 'visitor list'))).not.toContain('Ghosty');
+  });
+
+  it('refuses non-image files and duplicate names', async () => {
+    const w = new World('2026-10-05T12:00:00Z');
+    expect(text(await w.command('owner', 'visitor add', { class: 'rare', picture: { ...picture, contentType: 'application/pdf' } }))).toContain('PNG, JPG, GIF or WEBP');
+    await addVisitor(w, 'rare', { name: 'Ghosty' });
+    expect(text(await addVisitor(w, 'rare', { name: 'ghosty' }))).toContain('already a visitor called');
   });
 });

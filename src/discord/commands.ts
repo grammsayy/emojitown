@@ -13,6 +13,13 @@ const GAMES = [
   { name: 'Advent Calendar', value: 'advent' },
 ];
 
+const CLASS_CHOICES = [
+  { name: 'Common', value: 'common' },
+  { name: 'Uncommon', value: 'uncommon' },
+  { name: 'Rare', value: 'rare' },
+  { name: 'Legendary', value: 'legendary' },
+];
+
 const gameOpt = (o: SlashCommandStringOption) => o.setName('game').setDescription('Which game').setRequired(true).addChoices(...GAMES);
 const reasonOpt = (o: SlashCommandStringOption) => o.setName('reason').setDescription('Why (saved in the staff log)').setRequired(true).setMaxLength(300);
 const seasonOpt = (o: SlashCommandStringOption) =>
@@ -52,7 +59,7 @@ const halloweenCommands = [
       o
         .setName('rarity')
         .setDescription('Only show one rarity')
-        .addChoices({ name: 'common', value: 'common' }, { name: 'uncommon', value: 'uncommon' }, { name: 'rare', value: 'rare' }),
+        .addChoices(...CLASS_CHOICES),
     )
     .addStringOption(seasonOpt),
 ];
@@ -154,7 +161,45 @@ const setupCommand = command('setup', 'Set up the emojitown games (admins)')
       )
       .addAttachmentOption((o) => o.setName('file').setDescription('JSON file to upload. Leave empty to download the current one.')),
   )
+  .addSubcommand((s) =>
+    s
+      .setName('class')
+      .setDescription('Halloween visitor classes: how often each appears and its bonus candy')
+      .addStringOption((o) => o.setName('class').setDescription('Which class').setRequired(true).addChoices(...CLASS_CHOICES))
+      .addIntegerOption((o) => o.setName('chance').setDescription('Relative chance to appear, e.g. 60 (0 = never)').setMinValue(0).setMaxValue(1000))
+      .addIntegerOption((o) => o.setName('bonus_candy').setDescription('Extra candy for winning this class of visitor').setMinValue(0).setMaxValue(10000)),
+  )
   .addSubcommand((s) => s.setName('status').setDescription('Checklist: what is set up, what is live, what is missing'));
+
+// ── /visitor: create and edit Halloween visitors (Manage Server) ─────
+
+const visitorCommand = command('visitor', 'Create and edit Halloween visitors (admins)')
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+  .addSubcommand((s) =>
+    s
+      .setName('add')
+      .setDescription('Create a visitor (a form asks for its name and texts)')
+      .addStringOption((o) => o.setName('class').setDescription('Common, Uncommon, Rare or Legendary').setRequired(true).addChoices(...CLASS_CHOICES))
+      .addAttachmentOption((o) => o.setName('picture').setDescription('The visitor\'s picture (PNG, JPG, GIF or WEBP)'))
+      .addStringOption((o) => o.setName('picture_url').setDescription('…or a link to a picture').setMaxLength(500)),
+  )
+  .addSubcommand((s) =>
+    s
+      .setName('edit')
+      .setDescription("Change a visitor's class, picture or texts (opens a form)")
+      .addStringOption((o) => o.setName('visitor').setDescription('Which visitor').setRequired(true).setAutocomplete(true))
+      .addStringOption((o) => o.setName('class').setDescription('New class').addChoices(...CLASS_CHOICES))
+      .addAttachmentOption((o) => o.setName('picture').setDescription('New picture'))
+      .addStringOption((o) => o.setName('picture_url').setDescription('…or a link to a new picture').setMaxLength(500))
+      .addBooleanOption((o) => o.setName('remove_picture').setDescription('Remove the picture')),
+  )
+  .addSubcommand((s) =>
+    s
+      .setName('remove')
+      .setDescription('Remove a visitor (or all placeholder visitors). Collected items are kept.')
+      .addStringOption((o) => o.setName('visitor').setDescription('Which visitor').setRequired(true).setAutocomplete(true)),
+  )
+  .addSubcommand((s) => s.setName('list').setDescription('All visitors, their classes and pictures'));
 
 // ── /admin: running the games (Manage Server) ────────────────────────
 
@@ -290,7 +335,7 @@ const modCommand = command('mod', 'Event staff tools')
   )
   .addSubcommand((s) => s.setName('fix-role').setDescription('Re-check who should have the Halloween Champion role'));
 
-const staffCommands = [setupCommand, adminCommand, modCommand];
+const staffCommands = [setupCommand, visitorCommand, adminCommand, modCommand];
 
 export const GAME_COMMANDS: Record<'snowball' | 'halloween' | 'advent', SlashCommandBuilder[]> = {
   snowball: snowballCommands as SlashCommandBuilder[],
@@ -322,7 +367,7 @@ export function commandsFor(liveGames: Iterable<'snowball' | 'halloween' | 'adve
  */
 export function levelFor(key: string): Level {
   const top = key.split(' ')[0];
-  if (top === 'setup' || top === 'admin') return 'admin';
+  if (top === 'setup' || top === 'admin' || top === 'visitor') return 'admin';
   if (top === 'mod') return 'moderator';
   return 'member';
 }

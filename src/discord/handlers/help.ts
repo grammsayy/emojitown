@@ -30,7 +30,8 @@ export const helpHandlers: HandlerSet = {
             embed(COLORS.halloween, '🎃 Trick or Treat').addFields(
               field('Visitors', `Keep chatting and visitors drop by every ${formatSeconds(cfg.hwSpawnMinS)}–${formatSeconds(cfg.hwSpawnMaxS)}. Each asks for a **Trick** or a **Treat**.`),
               field('Answering', 'Press the button (or `/trick` / `/treat`). The first right answer wins. A wrong answer uses up your try for that visitor.'),
-              field('Items', 'Each win gives an item: common, uncommon or rare. Duplicates don\'t raise your score.'),
+              field('Classes', 'Visitors are Common, Uncommon, Rare or Legendary. Rarer visitors show up less often and give bonus candy.'),
+              field('Items', 'Each win gives you that visitor\'s collectible. Duplicates don\'t raise your score.'),
               field('Candy', `${cfg.candyPerHalloweenWin} candy per win, up to ${cfg.candyHalloweenDailyLimit} a day.`),
               field('Champion', 'Whoever owns the most different items holds the Champion role. Ties keep the current Champion.'),
               field('/inventory · /leaderboard', 'See your collection (with Missing items and Visitors buttons) and the standings.'),

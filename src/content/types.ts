@@ -1,5 +1,5 @@
-export type Rarity = 'common' | 'uncommon' | 'rare';
-export const RARITIES: Rarity[] = ['common', 'uncommon', 'rare'];
+export type Rarity = 'common' | 'uncommon' | 'rare' | 'legendary';
+export const RARITIES: Rarity[] = ['common', 'uncommon', 'rare', 'legendary'];
 
 export interface SnowballPack {
   /** Artwork URLs. A missing image falls back to text-only messages. */
@@ -24,7 +24,14 @@ export interface HalloweenItem {
 export interface HalloweenVisitor {
   id: string;
   name: string;
+  /** Visitor class: decides how often it appears and its bonus candy. Defaults to common. */
+  rarity?: Rarity;
+  /** An http(s) URL, or `img:<id>` for a picture stored by the bot. */
   image?: string;
+  /** Shown when the visitor arrives, above the trick/treat request. */
+  greeting?: string;
+  /** Retired visitors no longer appear; items already collected from them are kept. */
+  retired?: boolean;
   /** What the visitor says when asking for a trick. Placeholders: {name}. */
   trickRequest?: string;
   treatRequest?: string;

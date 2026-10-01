@@ -361,6 +361,24 @@ const MIGRATIONS: string[] = [
     expires_at INTEGER NOT NULL
   );
   `,
+  `
+  CREATE TABLE hw_classes (
+    guild_id TEXT NOT NULL,
+    class TEXT NOT NULL,
+    weight INTEGER NOT NULL,
+    bonus_candy INTEGER NOT NULL,
+    PRIMARY KEY (guild_id, class)
+  );
+
+  CREATE TABLE images (
+    guild_id TEXT NOT NULL,
+    id TEXT NOT NULL,
+    mime TEXT NOT NULL,
+    data BLOB NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (guild_id, id)
+  );
+  `,
 ];
 
 export function migrate(db: DB): void {

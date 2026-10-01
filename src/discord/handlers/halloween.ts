@@ -1,6 +1,8 @@
+import { CLASS_LABEL, getClasses } from '../../domain/classes.js';
+import { resolveImage } from '../images.js';
 import { discordTime, formatSeconds } from '../../util/time.js';
-import { ButtonStyle, type Guild, type MessageEditOptions, type Role, type User } from 'discord.js';
-import type { HalloweenItem, HalloweenPack, HalloweenVisitor, Rarity } from '../../content/types.js';
+import { ButtonStyle, type AttachmentBuilder, type Guild, type MessageEditOptions, type Role, type User } from 'discord.js';
+import { RARITIES, type HalloweenItem, type HalloweenPack, type Rarity } from '../../content/types.js';
 import { audit } from '../../domain/audit.js';
 import { getRoleState, refreshAllChampions, resetRoleHolder } from '../../domain/champion.js';
 import { getConfig, getStaffRoles, updateConfig } from '../../domain/config.js';
@@ -22,6 +24,7 @@ import {
   previewEncounter,
   uniqueCount,
   visitorsProgress,
+  visitorClass,
   visitorStatus,
   type Encounter,
   type HalloweenAction,
@@ -31,20 +34,24 @@ import { reply, type Button, type ChatInput, type Component, type HandlerSet } f
 import { assertSafeChampionRole, fetchTextChannel, syncChampionRole, type Bot } from '../runtime.js';
 import { button, cid, COLORS, embed, field, mention, pager, rankLabel, row, truncate, when } from '../ui.js';
 
-export const RARITY_LABEL: Record<Rarity, string> = { common: '⚪ Common', uncommon: '🟢 Uncommon', rare: '🟣 Rare' };
+export const RARITY_LABEL: Record<Rarity, string> = CLASS_LABEL;
 
-function visitorEmbedBase(visitor: HalloweenVisitor) {
-  const e = embed(COLORS.halloween, `${visitor.name} is here!`);
-  if (visitor.image) e.setThumbnail(visitor.image);
-  return e;
-}
-
-/** The public visitor message, for both the open and the closed state. */
-export function visitorMessage(pack: HalloweenPack, enc: Encounter): MessageEditOptions & { content?: string } {
+/** The public visitor message, for both the open and the closed state. Stored pictures are attached as files. */
+export function visitorMessage(bot: Bot, guildId: string, pack: HalloweenPack, enc: Encounter): MessageEditOptions & { files: AttachmentBuilder[] } {
   const visitor = findVisitor(pack, enc.visitorId);
   const open = enc.status === 'open';
-  const request = enc.request === 'trick' ? visitor.trickRequest ?? pack.messages.trickRequest : visitor.treatRequest ?? pack.messages.treatRequest;
-  const e = visitorEmbedBase(visitor).setDescription(fill(request, { name: visitor.name }));
+  const files = new Map<string, AttachmentBuilder>();
+  const show = (ref: string | undefined) => {
+    const img = resolveImage(bot, guildId, ref);
+    if (img?.file) files.set(img.url, img.file);
+    return img?.url;
+  };
+  const cls = visitorClass(visitor);
+  const request = enc.request === 'trick' ? (visitor.trickRequest ?? pack.messages.trickRequest) : (visitor.treatRequest ?? pack.messages.treatRequest);
+  const e = embed(COLORS.halloween, `${visitor.name} is here!`, [visitor.greeting, fill(request, { name: visitor.name })].filter(Boolean).join('\n\n'));
+  const thumb = show(visitor.image);
+  if (thumb) e.setThumbnail(thumb);
+  e.setAuthor({ name: `${RARITY_LABEL[cls]} visitor` });
   if (open) {
     e.addFields(field('Leaves', when(enc.expiresAt)));
   } else if (enc.status === 'won' && enc.itemId) {
@@ -53,7 +60,8 @@ export function visitorMessage(pack: HalloweenPack, enc: Encounter): MessageEdit
     e.setTitle(`${visitor.name} got their ${enc.request}!`)
       .setDescription(fill(tpl, { winner: `<@${enc.winnerId}>`, name: visitor.name, item: item.name, rarity: RARITY_LABEL[item.rarity] }))
       .addFields(field('Reward', `${item.name} · ${RARITY_LABEL[item.rarity]}${enc.candyAwarded ? ` · 🍬 ${enc.candyAwarded} candy` : ''}`));
-    if (item.image) e.setImage(item.image);
+    const big = show(item.image);
+    if (big && item.image !== visitor.image) e.setImage(big);
   } else {
     e.setTitle(`${visitor.name} has left`).setDescription(
       fill(enc.status === 'expired' ? pack.messages.expired : pack.messages.cancelled, { name: visitor.name }),
@@ -62,6 +70,7 @@ export function visitorMessage(pack: HalloweenPack, enc: Encounter): MessageEdit
   const trick = enc.request === 'trick';
   return {
     embeds: [e],
+    files: [...files.values()],
     components: [
       row(
         button(cid('hw', 'trick', enc.id), 'Trick', trick || !open ? ButtonStyle.Primary : ButtonStyle.Secondary, '🎭', !open),
@@ -70,6 +79,11 @@ export function visitorMessage(pack: HalloweenPack, enc: Encounter): MessageEdit
     ],
     allowedMentions: { parse: [] },
   };
+}
+
+/** Message edits replace the attachments, so the pictures are sent again with each update. */
+function asEdit(m: ReturnType<typeof visitorMessage>): MessageEditOptions {
+  return { ...m, attachments: [] };
 }
 
 /** Updates an encounter's public message. Returns false when it could not be edited (retried later). */
@@ -81,7 +95,7 @@ export async function syncEncounterMessage(bot: Bot, guild: Guild, enc: Encounte
   try {
     if (!channel) throw new Error('channel missing');
     const msg = await channel.messages.fetch(enc.messageId);
-    await msg.edit(visitorMessage(pack, enc));
+    await msg.edit(asEdit(visitorMessage(bot, guild.id, pack, enc)));
     markSynced(bot.ctx, guild.id, enc.id);
     return true;
   } catch (err) {
@@ -106,19 +120,26 @@ async function answer(bot: Bot, i: ChatInput | Component, action: HalloweenActio
     r.duplicate ? 'Already collected!' : 'New item! 🎃',
     `${r.visitor.name} gave you **${r.item.name}** (${RARITY_LABEL[r.item.rarity]}).\n${r.item.description}`,
   );
-  if (r.item.image) e.setThumbnail(r.item.image);
-  const candyText = r.candy > 0 ? `🍬 +${r.candy} candy${r.capped ? ' (daily Halloween limit reached)' : ''}` : r.capped ? "🍬 You've reached today's Halloween candy limit. Your item still counts!" : '—';
+  const itemImg = resolveImage(bot, i.guildId, r.item.image);
+  if (itemImg) e.setThumbnail(itemImg.url);
+  const bonusText = r.bonus > 0 ? ` (includes +${r.bonus} ${RARITY_LABEL[visitorClass(r.visitor)]} bonus)` : '';
+  const candyText =
+    r.candy > 0
+      ? `🍬 +${r.candy} candy${bonusText}${r.capped ? ' (daily Halloween limit reached)' : ''}`
+      : r.capped
+        ? "🍬 You've reached today's Halloween candy limit. Your item still counts!"
+        : '—';
   e.addFields(
     field('Collection', `${uniqueCount(bot.ctx, i.guildId, r.encounter.eventId, i.user.id)} unique items`, true),
     field('Candy', candyText, true),
   );
   if (r.duplicate) e.addFields(field('Duplicate', "Duplicates don't raise your collection score, but they're recorded in your history."));
-  await reply(i, { embeds: [e] });
+  await reply(i, { embeds: [e], files: itemImg?.file ? [itemImg.file] : [] });
 
   if (i.isButton() && i.message.id === r.encounter.messageId) {
     const pack = packFor(bot.ctx, getCurrentEvent(bot.ctx, i.guildId, 'halloween')!);
     await i.message
-      .edit(visitorMessage(pack, r.encounter))
+      .edit(asEdit(visitorMessage(bot, i.guildId, pack, r.encounter)))
       .then(() => markSynced(bot.ctx, i.guildId, r.encounter.id))
       .catch(() => undefined);
   } else {
@@ -135,12 +156,14 @@ function inventoryView(bot: Bot, guildId: string, userId: string, eventId: strin
     `🎒 Collection: ${inv.unique}/${inv.total}`,
     `<@${userId}> · **${inv.event.name}**${rarity ? ` · showing ${RARITY_LABEL[rarity]}` : ''}\n\n${lines.join('\n') || 'Nothing here yet.'}`,
   ).addFields(
-    ...(['common', 'uncommon', 'rare'] as Rarity[]).map((r) => field(RARITY_LABEL[r], `${inv.byRarity[r].owned}/${inv.byRarity[r].total}`, true)),
+    ...RARITIES.filter((r) => inv.byRarity[r].total > 0 || inv.byRarity[r].owned > 0).map((r) =>
+      field(RARITY_LABEL[r], `${inv.byRarity[r].owned}/${inv.byRarity[r].total}`, true),
+    ),
   );
   if (inv.duplicates) e.addFields(field('Duplicates received', String(inv.duplicates), true));
   const r = rarity ?? 'all';
   const filters = row(
-    ...(['all', 'common', 'uncommon', 'rare'] as const).map((f) =>
+    ...(['all', ...RARITIES] as const).map((f) =>
       button(cid('hw', 'inv', userId, inv.event.id, f, 1), f === 'all' ? 'All' : f[0]!.toUpperCase() + f.slice(1), f === r ? ButtonStyle.Primary : ButtonStyle.Secondary),
     ),
   );
@@ -230,11 +253,21 @@ export function halloweenPreview(bot: Bot, guildId: string, channelId: string, u
     candyAwarded: null,
     messageSynced: true,
   };
-  const open = visitorMessage(p.pack, fake);
-  const won = visitorMessage(p.pack, { ...fake, status: 'won', winnerId: userId, itemId: p.item.id, rarity: p.item.rarity, candyAwarded: 5 });
+  const open = visitorMessage(bot, guildId, p.pack, fake);
+  const bonus = getClasses(bot.ctx, guildId)[visitorClass(p.visitor)].bonusCandy;
+  const won = visitorMessage(bot, guildId, p.pack, {
+    ...fake,
+    status: 'won',
+    winnerId: userId,
+    itemId: p.item.id,
+    rarity: p.item.rarity,
+    candyAwarded: getConfig(bot.ctx, guildId).candyPerHalloweenWin + bonus,
+  });
+  const files = new Map([...open.files, ...won.files].map((f) => [f.name, f]));
   return {
     content: '**Preview** (nothing is saved). First the visitor arrives, then it shows the winner:',
     embeds: [...(open.embeds ?? []), ...(won.embeds ?? [])] as never,
+    files: [...files.values()],
   };
 }
 

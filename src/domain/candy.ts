@@ -136,12 +136,14 @@ export function creditHalloweenWin(
   userId: string,
   eventId: string,
   encounterId: number,
+  bonus = 0,
 ): { amount: number; capped: boolean; txnId: number | null } {
   return tx(ctx, () => {
     const cfg = getConfig(ctx, guildId);
+    const full = cfg.candyPerHalloweenWin + bonus;
     const remaining = Math.max(0, cfg.candyHalloweenDailyLimit - halloweenCandyToday(ctx, guildId, userId));
-    const amount = Math.min(cfg.candyPerHalloweenWin, remaining);
-    const capped = amount < cfg.candyPerHalloweenWin;
+    const amount = Math.min(full, remaining);
+    const capped = amount < full;
     if (amount <= 0) return { amount: 0, capped, txnId: null };
     const { txn } = applyCandy(ctx, {
       guildId,

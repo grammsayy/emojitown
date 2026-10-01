@@ -8,13 +8,14 @@ import { candyHandlers } from './handlers/candy.js';
 import { halloweenHandlers, itemChoices, visitorChoices } from './handlers/halloween.js';
 import { helpHandlers } from './handlers/help.js';
 import { manageHandlers } from './handlers/manage.js';
+import { visitorAdminChoices, visitorHandlers } from './handlers/visitors.js';
 import { seasonChoices, seasonHandlers } from './handlers/season.js';
 import { snowballHandlers } from './handlers/snowball.js';
 import { reply, type Button, type ChatHandler, type ComponentHandler, type ConfirmHandler, type HandlerSet } from './interaction.js';
 import { assertLevel, type Bot, type Level } from './runtime.js';
 import { COLORS, embed } from './ui.js';
 
-const SETS: HandlerSet[] = [snowballHandlers, halloweenHandlers, adventHandlers, candyHandlers, seasonHandlers, helpHandlers, manageHandlers];
+const SETS: HandlerSet[] = [snowballHandlers, halloweenHandlers, adventHandlers, candyHandlers, seasonHandlers, helpHandlers, manageHandlers, visitorHandlers];
 
 const chat = new Map<string, ChatHandler>();
 const components = new Map<string, ComponentHandler>();
@@ -26,7 +27,7 @@ for (const set of SETS) {
 }
 
 /** Staff components whose own handlers do not re-check permissions. */
-const COMPONENT_LEVELS: Record<string, Level> = { advedit: 'admin' };
+const COMPONENT_LEVELS: Record<string, Level> = { advedit: 'admin', visitorform: 'admin', vlist: 'admin' };
 
 /** Which game's seasons a `season` option should suggest. */
 function seasonFeature(i: AutocompleteInteraction<'cached'>): Feature | undefined {
@@ -44,6 +45,8 @@ async function autocomplete(bot: Bot, i: AutocompleteInteraction<'cached'>): Pro
     choices = seasonChoices(bot, i.guildId, seasonFeature(i), q);
   } else if (focused.name === 'item') {
     choices = itemChoices(bot, i.guildId, q);
+  } else if (focused.name === 'visitor' && i.commandName === 'visitor') {
+    choices = visitorAdminChoices(bot, i.guildId, q, i.options.getSubcommand(false) === 'remove');
   } else if (focused.name === 'visitor') {
     choices = visitorChoices(bot, i.guildId, q);
   } else if (focused.name === 'timezone') {

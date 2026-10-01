@@ -10,6 +10,7 @@ import {
 } from '../content/types.js';
 import type { Ctx } from './context.js';
 import { UserError } from './errors.js';
+import { IMAGE_REF } from './images.js';
 
 /** Version 0 is the built-in placeholder pack; imports create versions 1, 2, ... */
 export const DEFAULT_VERSION = 0;
@@ -29,6 +30,11 @@ function isUrl(value: unknown): boolean {
   } catch {
     return false;
   }
+}
+
+/** An http(s) URL, or a reference to a picture stored by the bot. */
+function isImage(value: unknown): boolean {
+  return isUrl(value) || (typeof value === 'string' && IMAGE_REF.test(value));
 }
 
 function nonEmptyString(v: unknown): v is string {
@@ -75,17 +81,14 @@ export function validateHalloweenPack(data: unknown): ValidationResult {
       else if (visitorIds.has(v.id)) errors.push(`Duplicate visitor ID \`${v.id}\`.`);
       else visitorIds.add(v.id);
       if (!nonEmptyString(v.name)) errors.push(`${where}.name is required.`);
-      if (v.image !== undefined && !isUrl(v.image)) errors.push(`${where}.image must be an http(s) URL.`);
+      if (v.image !== undefined && !isImage(v.image)) errors.push(`${where}.image must be an http(s) URL.`);
       if (!Array.isArray(v.items)) {
         errors.push(`${where}.items must be a list.`);
         return;
       }
-      const rarities = v.items.map((it: Partial<HalloweenItem>) => it.rarity);
-      for (const r of RARITIES) {
-        const n = rarities.filter((x) => x === r).length;
-        if (n !== 1) errors.push(`${where} must have exactly one ${r} item (found ${n}).`);
-      }
-      if (v.items.length !== 3) errors.push(`${where} must have exactly three items.`);
+      if (v.items.length < 1 || v.items.length > 10) errors.push(`${where} must have between 1 and 10 items.`);
+      if (v.rarity !== undefined && !RARITIES.includes(v.rarity)) errors.push(`${where}.rarity must be common, uncommon, rare or legendary.`);
+      if (v.retired !== undefined && typeof v.retired !== 'boolean') errors.push(`${where}.retired must be true or false.`);
       v.items.forEach((it: Partial<HalloweenItem>, ii) => {
         const iw = `${where}.items[${ii}]`;
         if (!nonEmptyString(it.id) || !ID_RE.test(it.id)) errors.push(`${iw}.id must be a lowercase stable ID.`);
@@ -93,12 +96,12 @@ export function validateHalloweenPack(data: unknown): ValidationResult {
         else itemIds.add(it.id);
         if (!nonEmptyString(it.name)) errors.push(`${iw}.name is required.`);
         if (!nonEmptyString(it.description)) errors.push(`${iw}.description is required.`);
-        if (!RARITIES.includes(it.rarity as never)) errors.push(`${iw}.rarity must be common, uncommon or rare.`);
-        if (it.image !== undefined && !isUrl(it.image)) errors.push(`${iw}.image must be an http(s) URL.`);
+        if (!RARITIES.includes(it.rarity as never)) errors.push(`${iw}.rarity must be common, uncommon, rare or legendary.`);
+        if (it.image !== undefined && !isImage(it.image)) errors.push(`${iw}.image must be an http(s) URL.`);
       });
       if (v.image === undefined) warnings.push(`Visitor \`${v.id}\` has no artwork; a text message will be used.`);
     });
-    if (p.visitors.length !== 40) warnings.push(`The full event is designed for 40 visitors; this pack has ${p.visitors.length}.`);
+    if (!p.visitors.some((v: Partial<HalloweenVisitor>) => !v.retired)) errors.push('At least one visitor must be active (not retired).');
   }
   const msgKeys = ['trickRequest', 'treatRequest', 'win', 'duplicate', 'wrong', 'expired', 'cancelled'] as const;
   if (!p.messages || typeof p.messages !== 'object') errors.push('`messages` object is required.');

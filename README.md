@@ -57,7 +57,21 @@ Development: `npm test` (Vitest), `npm run typecheck`, `npm run dev` (runs from 
 | `/setup advent channel:#advent` | Same for the Advent Calendar (Dec 1–24). Optional: `start`, `doors`, `unlock_time`, `catch_up`. |
 | `/setup door day:1` | Write one Advent door in a form. The calendar starts on its own once every door is written. |
 | `/setup content game:halloween` | Without a file: download the current names/messages/artwork JSON. With `file:`: upload your edited version (applies to the live season too). |
+| `/setup class class:rare chance:12 bonus_candy:5` | Halloween visitor classes (Common, Uncommon, Rare, Legendary): how often each appears and the extra candy it pays. |
 | `/setup status` | Checklist of what is set up, live, or still missing. |
+
+### Halloween visitors
+
+| Command | What it does |
+| --- | --- |
+| `/visitor add class:rare picture:<file>` | Create a visitor. A form asks for its name, greeting, trick text, treat text and the collectible it gives. Pictures are stored by the bot (Discord attachment links expire); `picture_url:` works too. |
+| `/visitor edit visitor:<name>` | Change class, picture (`picture`, `picture_url`, `remove_picture`) or texts. |
+| `/visitor remove visitor:<name>` | Remove one visitor, or pick **All placeholder visitors**. Visitors someone already collected from are retired instead, so nobody loses items. |
+| `/visitor list` | Every visitor with its class, plus each class's share of visits and bonus candy. |
+
+How a visit is chosen: first a class, weighted by its chance (only classes that currently have visitors count), then
+one of that class's visitors at random. The winner gets the normal candy plus the class bonus (default +0 / +2 / +5 / +10),
+within the daily Halloween candy limit. Changes apply to the live season immediately.
 
 Every setup command replies with **what changed** (`**Timezone:** UTC → Europe/Copenhagen`), or says
 **Nothing changed** when it didn't, followed by the current settings and anything still needed.

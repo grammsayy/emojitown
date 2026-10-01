@@ -77,7 +77,7 @@ async function tickTrickOrTreat(bot: Bot, guild: Guild): Promise<void> {
     const channel = await fetchTextChannel(guild, enc.channelId);
     try {
       if (!channel) throw Object.assign(new Error('channel missing'), { code: 10003 });
-      const msg = await channel.send(visitorMessage(packFor(bot.ctx, ev), enc) as never);
+      const msg = await channel.send(visitorMessage(bot, guild.id, packFor(bot.ctx, ev), enc) as never);
       attachMessage(bot.ctx, guild.id, enc.id, msg.id);
       console.log(`[${guild.name}] visitor ${enc.visitorId} appeared in #${channel.name} asking for a ${enc.request}`);
     } catch (err) {

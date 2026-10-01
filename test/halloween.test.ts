@@ -206,3 +206,28 @@ describe('champion', () => {
     expect(getRoleState(ctx, GUILD)).toMatchObject({ desiredId: null, pending: true });
   });
 });
+
+describe('visitor classes', () => {
+  it('picks a class by its chance among classes that have visitors, then a visitor within it', async () => {
+    const { pickVisitor } = await import('../src/domain/halloween.js');
+    const { setClass } = await import('../src/domain/classes.js');
+    const ctx = makeCtx('2026-10-10T12:00:00Z');
+    const item = (id: string) => ({ id, name: id, rarity: 'common' as const, description: 'x' });
+    const pack = {
+      ...(await import('../src/content/defaultHalloween.js')).DEFAULT_HALLOWEEN_PACK,
+      visitors: [
+        { id: 'c', name: 'C', rarity: 'common' as const, items: [item('c.i')] },
+        { id: 'l', name: 'L', rarity: 'legendary' as const, items: [item('l.i')] },
+        { id: 'r', name: 'R', rarity: 'rare' as const, retired: true, items: [item('r.i')] },
+      ],
+    };
+    // Defaults: common 60, legendary 3 (rare is retired, so it doesn't count) → total 63.
+    ctx.rolls = [0.5, 0];
+    expect(pickVisitor(ctx, GUILD, pack).id).toBe('c');
+    ctx.rolls = [0.99, 0];
+    expect(pickVisitor(ctx, GUILD, pack).id).toBe('l');
+    setClass(ctx, GUILD, 'legendary', { weight: 0 });
+    ctx.rolls = [0.99, 0];
+    expect(pickVisitor(ctx, GUILD, pack).id).toBe('c');
+  });
+});

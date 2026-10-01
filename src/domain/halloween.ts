@@ -3,6 +3,7 @@ import { MINUTE } from '../util/time.js';
 import { audit } from './audit.js';
 import { creditHalloweenWin } from './candy.js';
 import { collectorStandings, refreshChampion, storedChampion } from './champion.js';
+import { getClasses } from './classes.js';
 import { getChannels, getConfig, type GuildConfig } from './config.js';
 import { fill, findItem, getPack, searchItem } from './content.js';
 import { pick, randomInt, tx, type Ctx } from './context.js';
@@ -78,23 +79,56 @@ export function findVisitor(pack: HalloweenPack, visitorId: string): HalloweenVi
   return v;
 }
 
-export function collectionSize(pack: HalloweenPack): number {
-  return pack.visitors.reduce((n, v) => n + v.items.length, 0);
+/** Visitors that can still appear. Retired visitors stay in the pack so collected items keep resolving. */
+export function activeVisitors(pack: HalloweenPack): HalloweenVisitor[] {
+  return pack.visitors.filter((v) => !v.retired);
 }
 
-export function rollRarity(ctx: Ctx, cfg: Pick<GuildConfig, 'hwWeightCommon' | 'hwWeightUncommon' | 'hwWeightRare'>): Rarity {
-  const weights: [Rarity, number][] = [
-    ['common', cfg.hwWeightCommon],
-    ['uncommon', cfg.hwWeightUncommon],
-    ['rare', cfg.hwWeightRare],
-  ];
-  const total = weights.reduce((n, [, w]) => n + w, 0);
+export function visitorClass(v: HalloweenVisitor): Rarity {
+  return v.rarity ?? 'common';
+}
+
+export function collectionSize(pack: HalloweenPack): number {
+  return activeVisitors(pack).reduce((n, v) => n + v.items.length, 0);
+}
+
+function weightedPick<T>(ctx: Ctx, options: [T, number][]): T {
+  const usable = options.filter(([, w]) => w > 0);
+  if (usable.length <= 1) return (usable[0] ?? options[0]!)[0];
+  const total = usable.reduce((n, [, w]) => n + w, 0);
   let roll = ctx.random() * total;
-  for (const [rarity, w] of weights) {
-    if (roll < w) return rarity;
+  for (const [value, w] of usable) {
+    if (roll < w) return value;
     roll -= w;
   }
-  return 'common';
+  return usable[usable.length - 1]![0];
+}
+
+/**
+ * Picks the next visitor: first a class by its chance (only classes that have
+ * active visitors count), then a visitor of that class with equal odds.
+ */
+export function pickVisitor(ctx: Ctx, guildId: string, pack: HalloweenPack): HalloweenVisitor {
+  const active = activeVisitors(pack);
+  const classes = getClasses(ctx, guildId);
+  const present = RARITIES.filter((r) => active.some((v) => visitorClass(v) === r));
+  const cls = weightedPick(ctx, present.map((r) => [r, classes[r].weight] as [Rarity, number]));
+  return pick(ctx, active.filter((v) => visitorClass(v) === cls));
+}
+
+/** Picks which of a visitor's items drops. A visitor with one item always gives it. */
+export function rollItem(ctx: Ctx, guildId: string, visitor: HalloweenVisitor): HalloweenItem {
+  if (visitor.items.length === 1) return visitor.items[0]!;
+  const cfg = getConfig(ctx, guildId);
+  const weights: Record<Rarity, number> = {
+    common: cfg.hwWeightCommon,
+    uncommon: cfg.hwWeightUncommon,
+    rare: cfg.hwWeightRare,
+    legendary: getClasses(ctx, guildId).legendary.weight,
+  };
+  const present = RARITIES.filter((r) => visitor.items.some((i) => i.rarity === r));
+  const rarity = weightedPick(ctx, present.map((r) => [r, weights[r]] as [Rarity, number]));
+  return pick(ctx, visitor.items.filter((i) => i.rarity === rarity));
 }
 
 function spawnInterval(ctx: Ctx, cfg: GuildConfig): number {
@@ -243,7 +277,7 @@ export function tickHalloween(ctx: Ctx, guildId: string): HalloweenTick {
 
     const pack = packFor(ctx, ev);
     const channelId = pick(ctx, active);
-    const visitor = pick(ctx, pack.visitors);
+    const visitor = pickVisitor(ctx, guildId, pack);
     const request: HalloweenAction = ctx.random() < 0.5 ? 'trick' : 'treat';
     const info = ctx.db
       .prepare(
@@ -296,6 +330,8 @@ export type ClaimResult =
       item: HalloweenItem;
       duplicate: boolean;
       candy: number;
+      /** The visitor class's extra candy included in `candy` (before any daily cap). */
+      bonus: number;
       capped: boolean;
       championChanged: boolean;
       championId: string | null;
@@ -348,8 +384,7 @@ export function claim(
       .run(userId, now, enc.id, now);
     if (won.changes === 0) throw new UserError(`Someone else answered ${visitor.name} first. Watch for the next visitor!`);
 
-    const rarity = rollRarity(ctx, getConfig(ctx, guildId));
-    const item = visitor.items.find((i) => i.rarity === rarity) ?? visitor.items[0]!;
+    const item = rollItem(ctx, guildId, visitor);
     const owned = ctx.db
       .prepare('UPDATE hw_items SET count = count + 1 WHERE guild_id = ? AND event_id = ? AND user_id = ? AND item_id = ?')
       .run(guildId, ev.id, userId, item.id);
@@ -359,7 +394,8 @@ export function claim(
         .prepare('INSERT INTO hw_items (guild_id, event_id, user_id, item_id, first_at) VALUES (?, ?, ?, ?, ?)')
         .run(guildId, ev.id, userId, item.id, now);
     }
-    const candy = creditHalloweenWin(ctx, guildId, userId, ev.id, enc.id);
+    const bonus = getClasses(ctx, guildId)[visitorClass(visitor)].bonusCandy;
+    const candy = creditHalloweenWin(ctx, guildId, userId, ev.id, enc.id, bonus);
     ctx.db
       .prepare('UPDATE hw_encounters SET item_id = ?, rarity = ?, duplicate = ?, candy_awarded = ?, message_synced = 0 WHERE id = ?')
       .run(item.id, item.rarity, duplicate ? 1 : 0, candy.amount, enc.id);
@@ -372,6 +408,7 @@ export function claim(
       item,
       duplicate,
       candy: candy.amount,
+      bonus,
       capped: candy.capped,
       championChanged: champion.changed,
       championId: champion.championId,
@@ -401,10 +438,9 @@ export function previewEncounter(ctx: Ctx, guildId: string, visitorQuery?: strin
     const found = pack.visitors.find((v) => v.id === q || v.name.toLowerCase().includes(q));
     if (!found) throw new UserError(`No visitor matches "${visitorQuery}".`);
     visitor = found;
-  } else visitor = pick(ctx, pack.visitors);
+  } else visitor = pickVisitor(ctx, guildId, pack);
   const request: HalloweenAction = ctx.random() < 0.5 ? 'trick' : 'treat';
-  const rarity = rollRarity(ctx, getConfig(ctx, guildId));
-  const item = visitor.items.find((i) => i.rarity === rarity) ?? visitor.items[0]!;
+  const item = rollItem(ctx, guildId, visitor);
   return { pack, visitor, request, item };
 }
 
@@ -429,13 +465,13 @@ export function inventory(ctx: Ctx, guildId: string, userId: string, eventId: st
     const found = findItem(pack, r.item_id);
     if (found) owned.push({ ...found, count: r.count, firstAt: r.first_at });
   }
-  const order = (x: OwnedItem) => pack.visitors.indexOf(x.visitor) * 3 + RARITIES.indexOf(x.item.rarity);
+  const order = (x: OwnedItem) => pack.visitors.indexOf(x.visitor) * 100 + RARITIES.indexOf(x.item.rarity);
   owned.sort((a, b) => order(a) - order(b));
   const filtered = rarity ? owned.filter((o) => o.item.rarity === rarity) : owned;
   const byRarity = Object.fromEntries(
     RARITIES.map((r) => [
       r,
-      { owned: owned.filter((o) => o.item.rarity === r).length, total: pack.visitors.flatMap((v) => v.items).filter((i) => i.rarity === r).length },
+      { owned: owned.filter((o) => o.item.rarity === r).length, total: activeVisitors(pack).flatMap((v) => v.items).filter((i) => i.rarity === r).length },
     ]),
   ) as Record<Rarity, { owned: number; total: number }>;
   return {
@@ -452,7 +488,7 @@ export function missing(ctx: Ctx, guildId: string, userId: string, eventId?: str
   const ev = resolveViewEvent(ctx, guildId, 'halloween', eventId);
   const pack = packFor(ctx, ev);
   const have = new Set(ownedRows(ctx, guildId, ev.id, userId).map((r) => r.item_id));
-  const groups = pack.visitors
+  const groups = activeVisitors(pack)
     .map((visitor) => ({ visitor, items: visitor.items.filter((i) => !have.has(i.id)) }))
     .filter((g) => g.items.length > 0);
   return { event: ev, groups, missingCount: groups.reduce((n, g) => n + g.items.length, 0), total: collectionSize(pack) };
@@ -475,7 +511,7 @@ export function visitorsProgress(ctx: Ctx, guildId: string, userId: string, even
   const have = new Set(ownedRows(ctx, guildId, ev.id, userId).map((r) => r.item_id));
   return {
     event: ev,
-    visitors: pack.visitors.map((visitor) => ({ visitor, owned: visitor.items.filter((i) => have.has(i.id)).length, total: visitor.items.length })),
+    visitors: activeVisitors(pack).map((visitor) => ({ visitor, owned: visitor.items.filter((i) => have.has(i.id)).length, total: visitor.items.length })),
   };
 }
 
