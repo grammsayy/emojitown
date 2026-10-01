@@ -20,6 +20,8 @@ export interface FakeMessage {
   channelId: string;
   payload: any;
   edit(p: any): Promise<FakeMessage>;
+  delete(): Promise<FakeMessage>;
+  deleted?: boolean;
 }
 
 export class World {
@@ -142,6 +144,11 @@ export class World {
       payload,
       edit: async (p: any) => {
         m.payload = p;
+        return m;
+      },
+      delete: async () => {
+        m.deleted = true;
+        this.messages.delete(id);
         return m;
       },
     };

@@ -115,6 +115,7 @@ const setupCommand = command('setup', 'Set up the emojitown games (admins)')
       .addStringOption(durationOpt('wait_min', 'Shortest wait between visitors, e.g. 30s, 10m, 1h (default 10m)'))
       .addStringOption(durationOpt('wait_max', 'Longest wait between visitors, e.g. 20m, 2h (default 20m)'))
       .addStringOption(durationOpt('visit_length', 'How long a visitor stays, e.g. 90s, 2m (default 90s)'))
+      .addStringOption(durationOpt('delete_after', 'Delete finished visitor messages after e.g. 5s, 1m; "off" keeps them (default 5s)'))
       .addIntegerOption((o) => o.setName('candy_per_win').setDescription('Candy per win (default 5)').setMinValue(0).setMaxValue(10000))
       .addIntegerOption((o) => o.setName('daily_candy_limit').setDescription('Max Halloween candy per member per day (default 100)').setMinValue(0).setMaxValue(100000))
       .addChannelOption((o) => o.setName('remove_channel').setDescription('Stop visitors in a channel').addChannelTypes(ChannelType.GuildText)),

@@ -55,7 +55,7 @@ Development: `npm test` (Vitest), `npm run typecheck`, `npm run dev` (runs from 
 | Command | What it does |
 | --- | --- |
 | `/setup server` | Timezone, staff role, log channel, support link. |
-| `/setup halloween channel:#spooky` | Creates this year's Halloween season (Oct 1–31 by default), turns on automatic start, and starts it right away if today is within the dates. Optional: `champion_role`, `start`/`end`, `wait_min`/`wait_max`/`visit_length` (durations like `30s`, `10m`, `2h`, `1d`; `m` = minutes), `candy_per_win`, `daily_candy_limit`, `remove_channel`. |
+| `/setup halloween channel:#spooky` | Creates this year's Halloween season (Oct 1–31 by default), turns on automatic start, and starts it right away if today is within the dates. Optional: `champion_role`, `start`/`end`, `wait_min`/`wait_max`/`visit_length` (durations like `30s`, `10m`, `2h`, `1d`; `m` = minutes), `delete_after` (finished visitor messages are deleted after this delay, default `5s`; `off` keeps them), `candy_per_win`, `daily_candy_limit`, `remove_channel`. |
 | `/setup snowball channel:#snow` | Same for Snowball Fights (Dec 1–31 by default). |
 | `/setup advent channel:#advent` | Same for the Advent Calendar (Dec 1–24). Optional: `start`, `doors`, `unlock_time`, `catch_up`. |
 | `/setup door day:1` | Write one Advent door in a form. The calendar starts on its own once every door is written. |

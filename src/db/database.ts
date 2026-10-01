@@ -382,6 +382,9 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE hw_classes ADD COLUMN description TEXT;
   `,
+  `
+  ALTER TABLE guild_config ADD COLUMN hw_cleanup_s INTEGER NOT NULL DEFAULT 5;
+  `,
 ];
 
 export function migrate(db: DB): void {

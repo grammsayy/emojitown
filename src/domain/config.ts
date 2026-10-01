@@ -19,6 +19,8 @@ export interface GuildConfig {
   hwSpawnMaxS: number;
   hwEncounterS: number;
   hwActivityWindowS: number;
+  /** Seconds before a finished visitor message is deleted; 0 keeps it. */
+  hwCleanupS: number;
   hwWeightCommon: number;
   hwWeightUncommon: number;
   hwWeightRare: number;
@@ -40,6 +42,7 @@ const COLUMNS: Record<Exclude<keyof GuildConfig, 'guildId' | 'timezoneSet'>, str
   hwSpawnMaxS: 'hw_spawn_max_s',
   hwEncounterS: 'hw_encounter_s',
   hwActivityWindowS: 'hw_activity_window_s',
+  hwCleanupS: 'hw_cleanup_s',
   hwWeightCommon: 'hw_weight_common',
   hwWeightUncommon: 'hw_weight_uncommon',
   hwWeightRare: 'hw_weight_rare',
@@ -66,6 +69,7 @@ export function getConfig(ctx: Ctx, guildId: string): GuildConfig {
     hwSpawnMaxS: r.hw_spawn_max_s,
     hwEncounterS: r.hw_encounter_s,
     hwActivityWindowS: r.hw_activity_window_s,
+    hwCleanupS: r.hw_cleanup_s,
     hwWeightCommon: r.hw_weight_common,
     hwWeightUncommon: r.hw_weight_uncommon,
     hwWeightRare: r.hw_weight_rare,

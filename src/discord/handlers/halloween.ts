@@ -94,6 +94,14 @@ function asEdit(m: ReturnType<typeof visitorMessage>): MessageEditOptions {
   return { ...m, attachments: [] };
 }
 
+/** Deletes a finished visitor message after the server's `delete_after` delay (0 keeps it). */
+export function scheduleCleanup(bot: Bot, guildId: string, enc: Encounter, msg: { delete(): Promise<unknown> }): void {
+  if (enc.status === 'open') return;
+  const seconds = getConfig(bot.ctx, guildId).hwCleanupS;
+  if (seconds <= 0) return;
+  setTimeout(() => void msg.delete().catch(() => undefined), seconds * 1000).unref?.();
+}
+
 /** Updates an encounter's public message. Returns false when it could not be edited (retried later). */
 export async function syncEncounterMessage(bot: Bot, guild: Guild, enc: Encounter): Promise<boolean> {
   if (!enc.messageId) return true;
@@ -105,6 +113,7 @@ export async function syncEncounterMessage(bot: Bot, guild: Guild, enc: Encounte
     const msg = await channel.messages.fetch(enc.messageId);
     await msg.edit(asEdit(visitorMessage(bot, guild.id, pack, enc)));
     markSynced(bot.ctx, guild.id, enc.id);
+    scheduleCleanup(bot, guild.id, enc, msg);
     return true;
   } catch (err) {
     // A deleted message or channel can never be repaired; stop retrying.
@@ -130,9 +139,13 @@ async function answer(bot: Bot, i: ChatInput | Component, action: HalloweenActio
 
   if (i.isButton() && i.message.id === r.encounter.messageId) {
     const pack = packFor(bot.ctx, getCurrentEvent(bot.ctx, i.guildId, 'halloween')!);
-    await i.message
+    const msg = i.message;
+    await msg
       .edit(asEdit(visitorMessage(bot, i.guildId, pack, r.encounter)))
-      .then(() => markSynced(bot.ctx, i.guildId, r.encounter.id))
+      .then(() => {
+        markSynced(bot.ctx, i.guildId, r.encounter.id);
+        scheduleCleanup(bot, i.guildId, r.encounter, msg);
+      })
       .catch(() => undefined);
   } else {
     await syncEncounterMessage(bot, i.guild, r.encounter);

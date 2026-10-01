@@ -162,6 +162,49 @@ describe('Halloween, set up with one command', () => {
     expect(ev.championKeepRole).toBe(false);
   });
 
+  it('deletes finished visitor messages after the delete_after delay, or keeps them when off', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    try {
+      const w = new World('2026-10-05T12:00:00Z');
+      await serverSetup(w);
+      await w.command('owner', 'setup halloween', { channel: 'spooky', wait_min: '30s', wait_max: '1m' });
+      const spawn = async () => {
+        recordActivity(w.ctx, 'g1', 'spooky');
+        w.ctx.advance(61_000);
+        w.ctx.rolls = [0, 0, 0.1];
+        await w.tick();
+        return w.sent.filter((s) => s.channelId === 'spooky').at(-1)!;
+      };
+
+      // Claimed: the card shows, then disappears 5 seconds later.
+      const won = await spawn();
+      await w.button('alice', findCustomId(won.payload, 'hw|trick|')!, won.message);
+      expect(JSON.stringify(won.message.payload)).toContain('Happy Halloween!');
+      await vi.advanceTimersByTimeAsync(4_000);
+      expect(won.message.deleted).toBeFalsy();
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(won.message.deleted).toBe(true);
+
+      // Expired: also cleaned up.
+      const left = await spawn();
+      w.ctx.advance(91_000);
+      await w.tick();
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(left.message.deleted).toBe(true);
+
+      // Turned off: kept.
+      expect(text(await w.command('owner', 'setup halloween', { delete_after: 'off' }))).toContain(
+        '**Finished visitor messages:** deleted after 5s → kept',
+      );
+      const kept = await spawn();
+      await w.button('alice', findCustomId(kept.payload, 'hw|trick|')!, kept.message);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(kept.message.deleted).toBeFalsy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('rejects bad durations before changing anything', async () => {
     const w = new World('2026-10-05T12:00:00Z');
     expect(text(await w.command('owner', 'setup halloween', { channel: 'spooky', wait_min: 'soon' }))).toContain("isn't a duration");

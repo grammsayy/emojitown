@@ -133,10 +133,10 @@ async function setupServer(bot: Bot, i: ChatInput) {
 
 // ── /setup halloween | snowball | advent ─────────────────────────────
 
-function durationOption(i: ChatInput, name: string, label: string, min: number, max: number): number | undefined {
+function durationOption(i: ChatInput, name: string, label: string, min: number, max: number, unit: 's' | 'm' = 'm'): number | undefined {
   const raw = i.options.getString(name);
   if (raw === null) return undefined;
-  const s = parseDuration(raw);
+  const s = parseDuration(raw, unit);
   if (s === null) throw new UserError(`${label}: "${raw}" isn't a duration. Use something like 30s, 10m, 2h or 1d (m = minutes).`);
   if (s < min || s > max) throw new UserError(`${label} must be between ${formatSeconds(min)} and ${formatSeconds(max)}.`);
   return s;
@@ -164,6 +164,8 @@ async function setupGame(bot: Bot, i: ChatInput, game: Feature) {
     const min = durationOption(i, 'wait_min', 'Shortest wait', 10, 30 * 86400);
     const max = durationOption(i, 'wait_max', 'Longest wait', 10, 30 * 86400);
     const visit = durationOption(i, 'visit_length', 'Visit length', 10, 3600);
+    const cleanupRaw = o.getString('delete_after');
+    const cleanup = cleanupRaw !== null && /^(off|never|no|keep|0s?)$/i.test(cleanupRaw.trim()) ? 0 : durationOption(i, 'delete_after', 'Delete after', 1, 86400, 's');
     const newMin = min ?? before.hwSpawnMinS;
     const newMax = max ?? before.hwSpawnMaxS;
     if (newMin > newMax) {
@@ -173,6 +175,7 @@ async function setupGame(bot: Bot, i: ChatInput, game: Feature) {
       hwSpawnMinS: min,
       hwSpawnMaxS: max,
       hwEncounterS: visit,
+      hwCleanupS: cleanup,
       candyPerHalloweenWin: o.getInteger('candy_per_win') ?? undefined,
       candyHalloweenDailyLimit: o.getInteger('daily_candy_limit') ?? undefined,
     });
@@ -197,6 +200,7 @@ async function setupGame(bot: Bot, i: ChatInput, game: Feature) {
     hwSpawnMinS: ['Shortest wait between visitors', formatSeconds],
     hwSpawnMaxS: ['Longest wait between visitors', formatSeconds],
     hwEncounterS: ['Visit length', formatSeconds],
+    hwCleanupS: ['Finished visitor messages', (v: number) => (v > 0 ? `deleted after ${formatSeconds(v)}` : 'kept')],
     candyPerHalloweenWin: ['Candy per win', String],
     candyHalloweenDailyLimit: ['Daily Halloween candy limit', String],
     adventDoorCount: ['Doors', String],
