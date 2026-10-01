@@ -2,7 +2,7 @@ import type { SnowballPack } from './types.js';
 
 /**
  * Placeholder emojitown snowball content. Replace it through
- * `/season content feature:snowball action:import` with final artwork and wording.
+ * `/admin season content feature:snowball action:import` with final artwork and wording.
  */
 export const DEFAULT_SNOWBALL_PACK: SnowballPack = {
   images: {},

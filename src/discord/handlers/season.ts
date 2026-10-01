@@ -37,7 +37,7 @@ import type { ContentFeature, HalloweenPack, SnowballPack } from '../../content/
 import { isValidZone } from '../../util/time.js';
 import { askConfirm, reply, type ChatInput, type Component, type HandlerSet, type Modal } from '../interaction.js';
 import { discordChecks, featureChannelIds, postResults } from '../results.js';
-import { assertLevel, isAdmin, syncChampionRole, type Bot } from '../runtime.js';
+import { assertLevel, assertSafeStaffRole, isAdmin, syncChampionRole, type Bot } from '../runtime.js';
 import { cid, COLORS, embed, field, truncate, when } from '../ui.js';
 import { syncEncounterMessage } from './halloween.js';
 import { policyText } from './advent.js';
@@ -62,7 +62,7 @@ async function status(bot: Bot, i: ChatInput) {
 
 function missingEmbed(bot: Bot, guildId: string) {
   const missing = missingSetup(bot.ctx, guildId);
-  return field('Remaining setup', missing.length ? missing.map((m) => `• ${m}`).join('\n') : 'All basic setup is done ✅. Next: create events with `/season event create`.');
+  return field('Remaining setup', missing.length ? missing.map((m) => `• ${m}`).join('\n') : 'All basic setup is done ✅. Next: create events with `/admin event create`.');
 }
 
 async function setup(bot: Bot, i: ChatInput) {
@@ -71,6 +71,7 @@ async function setup(bot: Bot, i: ChatInput) {
   const support = i.options.getString('support');
   const logs = i.options.getChannel('log_channel');
   const role = i.options.getRole('event_manager_role');
+  if (role) assertSafeStaffRole(i.guild, role);
   tx(bot.ctx, () => {
     const change = updateConfig(bot.ctx, i.guildId, {
       timezone: zone ?? undefined,
@@ -167,11 +168,17 @@ async function channel(bot: Bot, i: ChatInput) {
 async function staff(bot: Bot, i: ChatInput) {
   const role = i.options.getRole('role', true);
   const grant = i.options.getString('action', true) === 'grant';
+  if (grant) assertSafeStaffRole(i.guild, role);
+  if (grant && role.id === getConfig(bot.ctx, i.guildId).championRoleId) throw new UserError('That is the Halloween Champion role. Pick a staff role.');
   tx(bot.ctx, () => {
     if (!setStaffRole(bot.ctx, i.guildId, role.id, grant)) throw new UserError(grant ? `${role} already has Event Manager access.` : `${role} doesn't have Event Manager access.`);
     audit(bot.ctx, { guildId: i.guildId, actorId: i.user.id, action: grant ? 'staff.grant' : 'staff.remove', after: { role: role.id } });
   });
-  await reply(i, `${grant ? 'Granted' : 'Removed'} Event Manager access for ${role}.`);
+  await reply(
+    i,
+    `${grant ? 'Granted' : 'Removed'} Event Manager access for ${role}.` +
+      (grant ? '\nSo they can see `/staff`, add this role under **Server Settings → Integrations → emojitown → /staff**.' : ''),
+  );
 }
 
 async function support(bot: Bot, i: ChatInput) {
@@ -190,7 +197,7 @@ async function eventCreate(bot: Bot, i: ChatInput) {
     embeds: [
       embed(COLORS.staff, `📝 Created draft event \`${ev.id}\``, `${FEATURE_LABEL[ev.feature]}: **${ev.name}**`).addFields(
         field('Default dates', `${when(win.startsAt)} → ${when(win.endsAt)}`),
-        field('Next', `Adjust dates with \`/season event schedule event:${ev.id}\`, check it with \`/season check\`, then start it or let it auto-start.`),
+        field('Next', `Adjust dates with \`/admin event schedule event:${ev.id}\`, check it with \`/admin season check\`, then start it or let it auto-start.`),
       ),
     ],
   });
@@ -268,7 +275,7 @@ async function eventEnd(bot: Bot, i: ChatInput) {
     effects.push(
       cfg.championEndPolicy === 'keep'
         ? 'The final Champion keeps the role until the next Halloween event starts.'
-        : 'The Champion role is removed now (change with `/halloween champion`).',
+        : 'The Champion role is removed now (change with `/admin halloween champion`).',
     );
   }
   if (ev.feature === 'advent') effects.push('Doors can no longer be claimed; released content stays readable.');
@@ -393,13 +400,17 @@ async function excludeCmd(bot: Bot, i: ChatInput, on: boolean) {
   await reply(
     i,
     on
-      ? `${member} is excluded from ${changed.map((f) => FEATURE_LABEL[f]).join(', ')}. Their records are kept; candy is unchanged (use \`/candy adjust\` if needed).`
+      ? `${member} is excluded from ${changed.map((f) => FEATURE_LABEL[f]).join(', ')}. Their records are kept; candy is unchanged (use \`/admin candy adjust\` if needed).`
       : `${member} can take part in ${changed.map((f) => FEATURE_LABEL[f]).join(', ')} again. Standings were recalculated.`,
   );
 }
 
+const ATTACHMENT_HOSTS = ['cdn.discordapp.com', 'media.discordapp.net'];
+
 async function fetchAttachmentJson(url: string): Promise<unknown> {
-  const res = await fetch(url);
+  const u = new URL(url);
+  if (u.protocol !== 'https:' || !ATTACHMENT_HOSTS.includes(u.hostname)) throw new UserError('Attach the file directly to the command.');
+  const res = await fetch(u, { signal: AbortSignal.timeout(10_000), redirect: 'error' });
   if (!res.ok) throw new UserError(`Could not download the file (HTTP ${res.status}).`);
   return parsePackJson(await res.text());
 }
@@ -488,25 +499,26 @@ export async function finishEnd(bot: Bot, guild: Guild, eventId: string, actorId
 export const seasonHandlers: HandlerSet = {
   chat: {
     'season status': status,
-    'season setup': setup,
-    'season config': config,
-    'season timezone': timezone,
-    'season channel': channel,
-    'season staff': staff,
-    'season support': support,
-    'season event create': eventCreate,
-    'season event schedule': eventSchedule,
-    'season event start': eventStart,
-    'season event end': eventEnd,
-    'season event pause': eventPause,
-    'season event resume': eventResume,
-    'season announce': announce,
-    'season check': check,
-    'season export': exportEvent,
-    'season audit': auditCmd,
-    'season exclude': (bot, i) => excludeCmd(bot, i, true),
-    'season include': (bot, i) => excludeCmd(bot, i, false),
-    'season content': content,
+    'admin season setup': setup,
+    'admin season config': config,
+    'admin season timezone': timezone,
+    'admin season channel': channel,
+    'admin season staff': staff,
+    'admin season support': support,
+    'admin event create': eventCreate,
+    'admin event schedule': eventSchedule,
+    'admin event start': eventStart,
+    'admin event end': eventEnd,
+    'staff event pause': eventPause,
+    'staff event resume': eventResume,
+    'admin season announce': announce,
+    'admin season check': check,
+    'admin season export': exportEvent,
+    'admin season audit': auditCmd,
+    'staff member exclude': (bot, i) => excludeCmd(bot, i, true),
+    'staff member include': (bot, i) => excludeCmd(bot, i, false),
+    'admin season content': content,
+    'staff content': content,
   },
   components: {
     schedule: scheduleSubmit,

@@ -90,8 +90,8 @@ export class World {
     return m;
   }
 
-  role(id: string, position = 5) {
-    const r = { id, position, managed: false, members: new Map(), toString: () => `<@&${id}>`, name: id };
+  role(id: string, position = 5, perms = 0n) {
+    const r = { id, position, managed: false, members: new Map(), permissions: { has: (p: bigint) => (perms & p) === p && p !== 0n }, toString: () => `<@&${id}>`, name: id };
     this.roles.set(id, r);
     return r;
   }

@@ -134,7 +134,7 @@ async function setup(bot: Bot, i: ChatInput): Promise<void> {
       'Branding',
       `${pack.hit.length} hit and ${pack.miss.length} miss messages · artwork: ${
         ['collect', 'hit', 'miss'].filter((k) => pack.images[k as 'hit']).join(', ') || 'none (text only)'
-      }\nReplace with \`/season content feature:snowball action:import\`.`,
+      }\nReplace with \`/admin season content feature:snowball action:import\`.`,
     ),
   );
   await reply(i, { embeds: [e] });
@@ -192,10 +192,10 @@ export const snowballHandlers: HandlerSet = {
     stats: statsCmd,
     leaderboard: async (bot, i) => reply(i, leaderboardView(bot, i.guildId, i.options.getString('event'), i.options.getInteger('page') ?? 1)),
     'snowball participation': participation,
-    'snowball setup': setup,
-    'snowball preview': preview,
-    'snowball correct': correct,
-    'snowball clear-warmup': clearWarm,
+    'admin snowball setup': setup,
+    'staff snowball preview': preview,
+    'admin snowball correct': correct,
+    'admin snowball clear-warmup': clearWarm,
   },
   components: {
     sb: async (bot, i, [action, ...rest]) => {

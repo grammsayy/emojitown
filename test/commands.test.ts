@@ -1,6 +1,6 @@
-import { ApplicationCommandOptionType, type APIApplicationCommandOption, type RESTPostAPIChatInputApplicationCommandsJSONBody } from 'discord.js';
+import { ApplicationCommandOptionType, PermissionFlagsBits, type APIApplicationCommandOption, type RESTPostAPIChatInputApplicationCommandsJSONBody } from 'discord.js';
 import { describe, expect, it } from 'vitest';
-import { commands, LEVELS } from '../src/discord/commands.js';
+import { commands, levelFor } from '../src/discord/commands.js';
 import { adventHandlers } from '../src/discord/handlers/advent.js';
 import { candyHandlers } from '../src/discord/handlers/candy.js';
 import { halloweenHandlers } from '../src/discord/handlers/halloween.js';
@@ -25,17 +25,37 @@ describe('slash commands', () => {
   const commandKeys = json.flatMap(keys);
   const handlerKeys = [snowballHandlers, halloweenHandlers, adventHandlers, candyHandlers, seasonHandlers, helpHandlers].flatMap((h) => Object.keys(h.chat ?? {}));
 
-  it('build and pass discord.js validation', () => {
+  it('build, pass discord.js validation and fit Discord\'s 8000-character limit', () => {
+    // Discord counts names, descriptions and choice names/values across the whole command tree.
+    const size = (o: any): number =>
+      (o.name?.length ?? 0) +
+      (o.description?.length ?? 0) +
+      (o.choices ?? []).reduce((n: number, c: any) => n + c.name.length + String(c.value).length, 0) +
+      (o.options ?? []).reduce((n: number, x: any) => n + size(x), 0);
     expect(json.length).toBeGreaterThan(10);
-    for (const c of json) expect(JSON.stringify(c).length).toBeLessThan(8000);
+    for (const c of json) expect(size(c), c.name).toBeLessThanOrEqual(8000);
   });
 
   it('every command has exactly one handler', () => {
     expect([...handlerKeys].sort()).toEqual([...commandKeys].sort());
   });
 
-  it('every staff level refers to a real command', () => {
-    for (const k of Object.keys(LEVELS)) expect(commandKeys).toContain(k);
+  it('locks staff commands on Discord and leaves member commands open', () => {
+    const manageGuild = PermissionFlagsBits.ManageGuild.toString();
+    for (const c of json) {
+      if (c.name === 'admin' || c.name === 'staff') expect(c.default_member_permissions).toBe(manageGuild);
+      else expect(c.default_member_permissions ?? null).toBeNull();
+    }
+  });
+
+  it('every staff subcommand lives under /admin or /staff', () => {
+    const staffish = /(setup|config|timezone|channel|support|announce|check|export|audit|content|create|schedule|start|end|pause|resume|exclude|include|correct|clear-warmup|champion|collection|preview|cancel|reconcile|edit|publish|validate|post|adjust|reverse|inspect)$/;
+    for (const k of commandKeys) {
+      if (k === 'season status' || k === 'support') continue;
+      if (staffish.test(k)) expect(levelFor(k), k).not.toBe('member');
+    }
+    expect(levelFor('admin season setup')).toBe('admin');
+    expect(levelFor('staff event pause')).toBe('moderator');
   });
 
   it('includes the full member command set from the specification', () => {
@@ -65,7 +85,7 @@ describe('slash commands', () => {
       'support',
     ]) {
       expect(commandKeys).toContain(k);
-      expect(LEVELS[k]).toBeUndefined();
+      expect(levelFor(k)).toBe('member');
     }
   });
 });

@@ -2,7 +2,7 @@ import { ButtonStyle, type Guild, type MessageEditOptions } from 'discord.js';
 import type { HalloweenItem, HalloweenPack, HalloweenVisitor, Rarity } from '../../content/types.js';
 import { audit } from '../../domain/audit.js';
 import { getRoleState, refreshAllChampions, resetRoleHolder } from '../../domain/champion.js';
-import { addChannel, getChannels, getConfig, removeChannel, updateConfig } from '../../domain/config.js';
+import { addChannel, getChannels, getConfig, getStaffRoles, removeChannel, updateConfig } from '../../domain/config.js';
 import { fill, getPack } from '../../domain/content.js';
 import { tx } from '../../domain/context.js';
 import { UserError } from '../../domain/errors.js';
@@ -30,7 +30,7 @@ import { storedChampion } from '../../domain/champion.js';
 import { isExcluded } from '../../domain/members.js';
 import { paginate } from '../../domain/ranking.js';
 import { reply, type Button, type ChatInput, type Component, type HandlerSet } from '../interaction.js';
-import { fetchTextChannel, syncChampionRole, type Bot } from '../runtime.js';
+import { assertSafeChampionRole, fetchTextChannel, syncChampionRole, type Bot } from '../runtime.js';
 import { button, cid, COLORS, embed, field, mention, pager, rankLabel, row, truncate, when } from '../ui.js';
 
 export const RARITY_LABEL: Record<Rarity, string> = { common: '⚪ Common', uncommon: '🟢 Uncommon', rare: '🟣 Rare' };
@@ -257,8 +257,10 @@ async function champion(bot: Bot, i: ChatInput) {
   const me = i.guild.members.me ?? (await i.guild.members.fetchMe());
   const warnings: string[] = [];
   if (!me.permissions.has('ManageRoles')) warnings.push('The bot is missing the **Manage Roles** permission.');
+  // Load the full member list so the "already held by others" check sees every holder.
+  await i.guild.members.fetch().catch(() => undefined);
+  assertSafeChampionRole(i.guild, role, getStaffRoles(bot.ctx, i.guildId));
   if (role.position >= me.roles.highest.position) warnings.push(`The bot's highest role must sit above ${role}. Move it up in Server Settings → Roles.`);
-  if (role.managed) throw new UserError('That role is managed by an integration and cannot be assigned.');
   const cfg = getConfig(bot.ctx, i.guildId);
   const previousRole = cfg.championRoleId;
   tx(bot.ctx, () => {
@@ -386,12 +388,12 @@ export const halloweenHandlers: HandlerSet = {
     'halloween visitors': (bot, i) => reply(i, visitorsView(bot, i.guildId, i.user.id, i.options.getString('event'), 1)),
     'halloween leaderboard': (bot, i) => reply(i, leaderboardView(bot, i.guildId, i.options.getString('event'), i.options.getInteger('page') ?? 1)),
     'halloween status': status,
-    'halloween setup': setup,
-    'halloween champion': champion,
-    'halloween preview': preview,
-    'halloween cancel': cancel,
-    'halloween collection': collection,
-    'halloween reconcile': reconcile,
+    'admin halloween setup': setup,
+    'admin halloween champion': champion,
+    'staff halloween preview': preview,
+    'staff halloween cancel': cancel,
+    'admin halloween collection': collection,
+    'staff halloween reconcile': reconcile,
   },
   components: {
     hw: async (bot, i, [action, ...rest]) => {

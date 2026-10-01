@@ -7,6 +7,7 @@ import {
   type GuildMember,
   type GuildTextBasedChannel,
   type MessageCreateOptions,
+  type Role,
 } from 'discord.js';
 import type { AuditEntry, Ctx } from '../domain/context.js';
 import { getRoleState, markRoleFailed, markRoleSynced } from '../domain/champion.js';
@@ -39,6 +40,49 @@ export function assertLevel(bot: Bot, member: GuildMember, level: Level): void {
   if (level === 'moderator' && !isModerator(bot, member)) {
     throw new UserError('Only event staff (the Event Manager role) or administrators can do that.');
   }
+}
+
+/** Permissions that must never be granted by winning a game, or stripped from members by role sync. */
+const PRIVILEGED_PERMISSIONS: [bigint, string][] = [
+  [PermissionFlagsBits.Administrator, 'Administrator'],
+  [PermissionFlagsBits.ManageGuild, 'Manage Server'],
+  [PermissionFlagsBits.ManageRoles, 'Manage Roles'],
+  [PermissionFlagsBits.ManageChannels, 'Manage Channels'],
+  [PermissionFlagsBits.ManageMessages, 'Manage Messages'],
+  [PermissionFlagsBits.ManageWebhooks, 'Manage Webhooks'],
+  [PermissionFlagsBits.ManageNicknames, 'Manage Nicknames'],
+  [PermissionFlagsBits.ManageGuildExpressions, 'Manage Expressions'],
+  [PermissionFlagsBits.ManageEvents, 'Manage Events'],
+  [PermissionFlagsBits.ManageThreads, 'Manage Threads'],
+  [PermissionFlagsBits.KickMembers, 'Kick Members'],
+  [PermissionFlagsBits.BanMembers, 'Ban Members'],
+  [PermissionFlagsBits.ModerateMembers, 'Timeout Members'],
+  [PermissionFlagsBits.MentionEveryone, 'Mention @everyone'],
+  [PermissionFlagsBits.ViewAuditLog, 'View Audit Log'],
+];
+
+/**
+ * The Champion role is handed to whoever wins and removed from everyone else
+ * who holds it, so it must be a dedicated, permission-free role.
+ */
+export function assertSafeChampionRole(guild: Guild, role: Role, staffRoleIds: string[]): void {
+  if (role.id === guild.id) throw new UserError('@everyone cannot be the Champion role. Create a dedicated role for it.');
+  if (role.managed) throw new UserError('That role is managed by an integration and cannot be assigned.');
+  if (staffRoleIds.includes(role.id)) throw new UserError('That role is an Event Manager role. Use a dedicated Champion role.');
+  const granted = PRIVILEGED_PERMISSIONS.filter(([p]) => role.permissions.has(p, false)).map(([, n]) => n);
+  if (granted.length) {
+    throw new UserError(`${role} grants ${granted.join(', ')}. The Champion role is given to a game winner, so it must not carry moderation permissions.`);
+  }
+  if (role.members.size > 1) {
+    throw new UserError(
+      `${role} is already held by ${role.members.size} members. The bot removes the Champion role from everyone except the winner, so use a dedicated role.`,
+    );
+  }
+}
+
+export function assertSafeStaffRole(guild: Guild, role: Role): void {
+  if (role.id === guild.id) throw new UserError('@everyone cannot be an Event Manager role; that would give every member staff access.');
+  if (role.managed) throw new UserError('That role is managed by an integration. Pick a role you assign to your event staff.');
 }
 
 export async function fetchTextChannel(guild: Guild, channelId: string | null): Promise<GuildTextBasedChannel | null> {
@@ -135,7 +179,7 @@ export async function syncChampionRole(bot: Bot, guildId: string): Promise<{ ok:
           guildId,
           'Champion role update failed',
           `Could not give the Halloween Champion role to ${state.desiredId ? `<@${state.desiredId}>` : 'nobody'}: ${message}\n` +
-            'Standings are correct. Check that the bot has **Manage Roles** and that its role sits above the Champion role, then run `/halloween reconcile`.',
+            'Standings are correct. Check that the bot has **Manage Roles** and that its role sits above the Champion role, then run `/staff halloween reconcile`.',
         );
       }
       return { ok: false, error: message };

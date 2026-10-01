@@ -72,7 +72,7 @@ async function setup(bot: Bot, i: ChatInput) {
   const cfg = getConfig(bot.ctx, i.guildId);
   await reply(
     i,
-    `🍬 Halloween: **${cfg.candyPerHalloweenWin}** per win, daily limit **${cfg.candyHalloweenDailyLimit}**. Changes apply to future rewards. Advent candy is set per door with \`/advent edit\`.`,
+    `🍬 Halloween: **${cfg.candyPerHalloweenWin}** per win, daily limit **${cfg.candyHalloweenDailyLimit}**. Changes apply to future rewards. Advent candy is set per door with \`/admin advent edit\`.`,
   );
 }
 
@@ -140,10 +140,10 @@ export const candyHandlers: HandlerSet = {
     'candy leaderboard': (bot, i) => reply(i, leaderboardView(bot, i.guildId, i.options.getString('event'), i.options.getInteger('page') ?? 1)),
     'candy history': (bot, i) => reply(i, historyView(bot, i.guildId, i.user.id, i.options.getInteger('page') ?? 1, null)),
     'candy rules': rules,
-    'candy setup': setup,
-    'candy adjust': adjust,
-    'candy reverse': reverse,
-    'candy inspect': inspect,
+    'admin candy setup': setup,
+    'admin candy adjust': adjust,
+    'admin candy reverse': reverse,
+    'staff candy inspect': inspect,
   },
   components: {
     candy: async (bot, i, [action, ...rest]) => {

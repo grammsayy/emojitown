@@ -227,7 +227,7 @@ async function previewCmd(bot: Bot, i: ChatInput) {
   const ev = requireEvent(bot.ctx, i.guildId, i.options.getString('event', true), 'advent');
   const day = i.options.getInteger('day', true);
   const door = getDoor(bot.ctx, i.guildId, ev.id, day);
-  if (!door) throw new UserError(`Door ${day} has no content yet. Use \`/advent edit\`.`);
+  if (!door) throw new UserError(`Door ${day} has no content yet. Use \`/admin advent edit\`.`);
   const cfg = getConfig(bot.ctx, i.guildId);
   const t = doorTimes(ev, cfg, day);
   const e = doorEmbed(ev, door).addFields(
@@ -253,7 +253,7 @@ async function validateCmd(bot: Bot, i: ChatInput) {
           ? `• ${issues.slice(0, 40).join('\n• ')}`
           : ev.adventPublishedAt
             ? 'This calendar is published.'
-            : 'Run `/advent publish` to freeze it for release.',
+            : 'Run `/admin advent publish` to freeze it for release.',
       ),
     ],
   });
@@ -297,12 +297,12 @@ export const adventHandlers: HandlerSet = {
     'advent calendar': (bot, i) => reply(i, calendarView(bot, i.guildId, i.user.id, i.options.getString('event'))),
     'advent open': (bot, i) => reply(i, openResultMessage(openDoor(bot.ctx, i.guildId, i.user.id, i.options.getInteger('day'), i.options.getString('event')))),
     'advent progress': progressCmd,
-    'advent setup': setup,
-    'advent edit': edit,
-    'advent preview': previewCmd,
-    'advent validate': validateCmd,
-    'advent publish': publish,
-    'advent post': postCmd,
+    'admin advent setup': setup,
+    'admin advent edit': edit,
+    'staff advent preview': previewCmd,
+    'staff advent validate': validateCmd,
+    'admin advent publish': publish,
+    'staff advent post': postCmd,
   },
   components: {
     advedit: editSubmit,

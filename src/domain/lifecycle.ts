@@ -38,7 +38,7 @@ export function checkEvent(ctx: Ctx, guildId: string, eventId: string): Readines
     const result = validatePack(ev.feature, getPack(ctx, guildId, ev.feature, version));
     errors.push(...result.errors.map((e) => `Content: ${e}`));
     warnings.push(...result.warnings.slice(0, 5).map((w) => `Content: ${w}`));
-    if (version === 0) warnings.push(`Using the built-in placeholder ${ev.feature} content. Import the emojitown pack with \`/season content\`.`);
+    if (version === 0) warnings.push(`Using the built-in placeholder ${ev.feature} content. Import the emojitown pack with \`/admin season content\`.`);
   }
   if (ev.feature === 'halloween') {
     if (!cfg.championRoleId) warnings.push('No Halloween Champion role is configured.');
@@ -47,7 +47,7 @@ export function checkEvent(ctx: Ctx, guildId: string, eventId: string): Readines
   }
   if (ev.feature === 'advent') {
     if (!getChannel(ctx, guildId, 'advent')) errors.push('No Advent channel is configured.');
-    if (!ev.adventPublishedAt) errors.push('The calendar has not been published (`/advent validate`, then `/advent publish`).');
+    if (!ev.adventPublishedAt) errors.push('The calendar has not been published (`/staff advent validate`, then `/admin advent publish`).');
     const issues = validateCalendar(ctx, guildId, ev.id);
     errors.push(...issues.slice(0, 10));
     if (issues.length > 10) errors.push(`…and ${issues.length - 10} more calendar issues.`);
@@ -74,7 +74,7 @@ export function startEvent(ctx: Ctx, guildId: string, eventId: string, actorId: 
   return tx(ctx, () => {
     const ev = requireEvent(ctx, guildId, eventId);
     if (ev.state === 'active') throw new UserError('This event is already active.');
-    if (ev.state === 'paused') throw new UserError('This event is paused. Use `/season event resume` instead.');
+    if (ev.state === 'paused') throw new UserError('This event is paused. Use `/staff event resume` instead.');
     const { errors } = checkEvent(ctx, guildId, eventId);
     const all = [...errors, ...extraErrors];
     if (all.length) throw new UserError(`This event isn't ready to start:\n• ${all.join('\n• ')}`);

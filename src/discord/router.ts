@@ -1,8 +1,8 @@
 import { MessageFlags, type AutocompleteInteraction, type Interaction } from 'discord.js';
-import { consumePending, discardPending } from '../domain/confirmations.js';
+import { consumePending } from '../domain/confirmations.js';
 import { UserError } from '../domain/errors.js';
 import { listEvents, type Feature } from '../domain/events.js';
-import { LEVELS } from './commands.js';
+import { levelFor } from './commands.js';
 import { adventHandlers } from './handlers/advent.js';
 import { candyHandlers } from './handlers/candy.js';
 import { halloweenHandlers, itemChoices, visitorChoices } from './handlers/halloween.js';
@@ -27,7 +27,7 @@ for (const set of SETS) {
 /** Staff components whose own handlers do not re-check permissions. */
 const COMPONENT_LEVELS: Record<string, Level> = { advedit: 'admin', schedule: 'admin' };
 
-/** Which feature's events an `event` option should suggest, per command. */
+/** Which feature's events an `event` option should suggest, by command or /admin and /staff group. */
 const EVENT_FEATURE: Record<string, Feature | undefined> = {
   stats: 'snowball',
   leaderboard: 'snowball',
@@ -36,12 +36,17 @@ const EVENT_FEATURE: Record<string, Feature | undefined> = {
   advent: 'advent',
 };
 
+function eventFeature(i: AutocompleteInteraction<'cached'>): Feature | undefined {
+  const name = i.commandName === 'admin' || i.commandName === 'staff' ? i.options.getSubcommandGroup(false) : i.commandName;
+  return name ? EVENT_FEATURE[name] : undefined;
+}
+
 async function autocomplete(bot: Bot, i: AutocompleteInteraction<'cached'>): Promise<void> {
   const focused = i.options.getFocused(true);
   const q = String(focused.value).toLowerCase();
   let choices: { name: string; value: string }[] = [];
   if (focused.name === 'event') {
-    const feature = EVENT_FEATURE[i.commandName];
+    const feature = eventFeature(i);
     choices = listEvents(bot.ctx, i.guildId, feature)
       .filter((e) => e.id.includes(q) || e.name.toLowerCase().includes(q))
       .slice(0, 25)
@@ -87,7 +92,7 @@ export async function route(bot: Bot, i: Interaction): Promise<void> {
       const key = commandKey(i);
       const handler = chat.get(key);
       if (!handler) throw new Error(`no handler for /${key}`);
-      assertLevel(bot, i.member, LEVELS[key] ?? 'member');
+      assertLevel(bot, i.member, levelFor(key));
       return await handler(bot, i);
     }
 
@@ -108,7 +113,7 @@ export async function route(bot: Bot, i: Interaction): Promise<void> {
 
 async function confirm(bot: Bot, i: Button, accepted: boolean, token: string): Promise<void> {
   if (!accepted) {
-    discardPending(bot.ctx, token);
+    consumePending(bot.ctx, i.guildId, i.user.id, token);
     await i.update({ content: 'Cancelled. Nothing was changed.', embeds: [], components: [] });
     return;
   }
@@ -123,7 +128,7 @@ async function confirm(bot: Bot, i: Button, accepted: boolean, token: string): P
     await i.editReply(typeof result === 'string' ? { content: result, embeds: [], components: [] } : { content: '', embeds: [result], components: [] });
   } catch (err) {
     if (!(err instanceof UserError)) console.error(`confirmed action ${kind} failed`, err);
-    const message = err instanceof UserError ? err.message : 'Something went wrong on our side. Please check `/season audit` before retrying.';
+    const message = err instanceof UserError ? err.message : 'Something went wrong on our side. Please check `/admin season audit` before retrying.';
     await i.editReply({ content: '', embeds: [embed(COLORS.warn, 'Not saved', message)], components: [] });
   }
 }

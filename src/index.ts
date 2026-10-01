@@ -37,19 +37,43 @@ client.once(Events.ClientReady, (c) => {
 
 client.on(Events.InteractionCreate, (i) => void route(bot, i));
 
-client.on(Events.MessageCreate, (m) => {
-  if (!m.inGuild() || m.author.bot || m.webhookId || m.system) return;
-  if (getChannels(ctx, m.guildId, 'halloween').includes(m.channelId)) recordActivity(ctx, m.guildId, m.channelId);
-});
+/** Gateway listeners run outside the interaction router, so they guard their own errors. */
+function safely<A extends unknown[]>(name: string, fn: (...args: A) => void) {
+  return (...args: A) => {
+    try {
+      fn(...args);
+    } catch (err) {
+      console.error(`${name} handler failed`, err);
+    }
+  };
+}
 
-client.on(Events.GuildMemberRemove, (m) => {
-  markDeparted(ctx, m.guild.id, m.id);
-  void syncChampionRole(bot, m.guild.id);
-});
+client.on(
+  Events.MessageCreate,
+  safely('messageCreate', (m) => {
+    if (!m.inGuild() || m.author.bot || m.webhookId || m.system) return;
+    if (getChannels(ctx, m.guildId, 'halloween').includes(m.channelId)) recordActivity(ctx, m.guildId, m.channelId);
+  }),
+);
 
-client.on(Events.GuildMemberAdd, (m) => {
-  if (markReturned(ctx, m.guild.id, m.id)) void syncChampionRole(bot, m.guild.id);
-});
+client.on(
+  Events.GuildMemberRemove,
+  safely('guildMemberRemove', (m) => {
+    markDeparted(ctx, m.guild.id, m.id);
+    void syncChampionRole(bot, m.guild.id);
+  }),
+);
+
+client.on(
+  Events.GuildMemberAdd,
+  safely('guildMemberAdd', (m) => {
+    if (markReturned(ctx, m.guild.id, m.id)) void syncChampionRole(bot, m.guild.id);
+  }),
+);
+
+// Log and keep running: one failed handler must not take the bot down for every server.
+client.on(Events.Error, (err) => console.error('discord client error', err));
+process.on('unhandledRejection', (err) => console.error('unhandled rejection', err));
 
 const shutdown = () => {
   console.log('shutting down');

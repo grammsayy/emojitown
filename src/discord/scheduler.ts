@@ -32,7 +32,7 @@ async function pauseForMissingChannel(bot: Bot, guild: Guild, feature: Feature, 
     bot,
     guild.id,
     `${FEATURE_LABEL[feature]} paused`,
-    `The bot can't use <#${channelId}>, so **${ev.name}** was paused. Fix the channel or its permissions (or update \`/season channel\`), then run \`/season event resume event:${ev.id}\`.`,
+    `The bot can't use <#${channelId}>, so **${ev.name}** was paused. Fix the channel or its permissions (or update \`/admin season channel\`), then run \`/staff event resume event:${ev.id}\`.`,
   );
 }
 
