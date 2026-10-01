@@ -106,11 +106,8 @@ export function getCurrentOrLatestEvent(ctx: Ctx, guildId: string, feature: Feat
 /** Resolves an optional event argument for a member view, defaulting to the current or latest event. */
 export function resolveViewEvent(ctx: Ctx, guildId: string, feature: Feature, eventId?: string | null): SeasonEvent {
   if (eventId) {
-    const ev = requireEvent(ctx, guildId, eventId, feature);
-    if (ev.state === 'draft' || ev.state === 'scheduled') {
-      throw new UserError(`\`${ev.id}\` hasn't started yet.`);
-    }
-    return ev;
+    // A season that hasn't started simply shows empty standings.
+    return requireEvent(ctx, guildId, eventId, feature);
   }
   const ev = getCurrentOrLatestEvent(ctx, guildId, feature);
   if (!ev) throw new UserError(`There hasn't been a ${FEATURE_LABEL[feature]} event yet. Check \`/events\` for what's coming up.`);

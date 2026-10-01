@@ -8,6 +8,7 @@ import { candyHandlers } from './handlers/candy.js';
 import { halloweenHandlers, itemChoices, visitorChoices } from './handlers/halloween.js';
 import { helpHandlers } from './handlers/help.js';
 import { manageHandlers } from './handlers/manage.js';
+import { messageChoices } from './handlers/messageTest.js';
 import { visitorAdminChoices, visitorHandlers } from './handlers/visitors.js';
 import { seasonChoices, seasonHandlers } from './handlers/season.js';
 import { snowballHandlers } from './handlers/snowball.js';
@@ -43,6 +44,8 @@ async function autocomplete(bot: Bot, i: AutocompleteInteraction<'cached'>): Pro
   let choices: { name: string; value: string }[] = [];
   if (focused.name === 'season') {
     choices = seasonChoices(bot, i.guildId, seasonFeature(i), q);
+  } else if (focused.name === 'message') {
+    choices = messageChoices(i.options.getString('game'), q);
   } else if (focused.name === 'item') {
     choices = itemChoices(bot, i.guildId, q);
   } else if (focused.name === 'visitor' && i.commandName === 'visitor') {

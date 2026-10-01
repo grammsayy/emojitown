@@ -44,7 +44,7 @@ function doorComponents(ev: SeasonEvent, door: Door) {
   return [row(...buttons)];
 }
 
-function openResultMessage(r: OpenResult) {
+export function openResultMessage(r: OpenResult) {
   const e = doorEmbed(r.event, r.door);
   const note: Record<OpenResult['outcome'], string> = {
     claimed: r.candy > 0 ? `🍬 You received **${r.candy} candy**!` : '✨ Door opened! This door has no candy reward.',

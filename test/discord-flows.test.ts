@@ -446,3 +446,42 @@ describe('custom Halloween visitors and classes', () => {
     expect(text(await addVisitor(w, 'rare', { name: 'ghosty' }))).toContain('already a visitor called');
   });
 });
+
+describe('/admin message-test', () => {
+  it('previews every message for each game with real content, privately, with buttons disabled', async () => {
+    const { TEST_MESSAGES, messageChoices } = await import('../src/discord/handlers/messageTest.js');
+    const w = new World('2026-10-05T12:00:00Z');
+    await w.command('owner', 'setup halloween', { channel: 'spooky' });
+
+    expect(messageChoices('halloween', '')[0]!.name).toBe(`All ${TEST_MESSAGES.halloween.length} messages`);
+    expect(messageChoices('halloween', 'win card').map((c) => c.value)).toEqual(['win', 'win-duplicate']);
+
+    const all = await w.command('owner', 'admin message-test', { game: 'halloween', message: 'all', visitor: 'pumpkin-pete' });
+    expect(all).toHaveLength(TEST_MESSAGES.halloween.length);
+    expect(all[0]!.type).toBe('reply');
+    expect(all.slice(1).every((c) => c.type === 'followUp' && c.payload.flags !== undefined)).toBe(true);
+    const t = text(all);
+    expect(t).toContain('Test 1/13: Visitor arrives (wants a Trick)');
+    expect(t).toContain('Pumpkin Pete');
+    expect(t).toContain('Happy Halloween!');
+    expect(t).toContain("You already had this one");
+    expect(t).not.toContain('⚠️');
+    for (const c of all) for (const r of c.payload.components ?? []) for (const b of r.components) expect(b.disabled).toBe(true);
+    // Nothing was saved.
+    expect(w.ctx.db.prepare('SELECT COUNT(*) n FROM hw_encounters').get()).toEqual({ n: 0 });
+    expect(getBalance(w.ctx, 'g1', 'owner')).toBe(0);
+
+    const pub = await w.command('owner', 'admin message-test', { game: 'snowball', message: 'hit', public: true });
+    expect(pub[0]!.payload.flags).toBeUndefined();
+    expect(text(pub)).toContain('Direct hit');
+
+    // Advent without doors explains what's missing instead of failing.
+    await w.command('owner', 'setup advent', { channel: 'advent' });
+    expect(text(await w.command('owner', 'admin message-test', { game: 'advent', message: 'door-post' }))).toContain('No doors are written yet');
+    expect(text(await w.command('owner', 'admin message-test', { game: 'snowball', message: 'results' }))).toContain('Run `/setup snowball` first');
+    await w.command('owner', 'setup snowball', { channel: 'snow' });
+    const snow = await w.command('owner', 'admin message-test', { game: 'snowball', message: 'all' });
+    expect(snow).toHaveLength(TEST_MESSAGES.snowball.length);
+    expect(text(snow)).not.toContain('⚠️');
+  });
+});

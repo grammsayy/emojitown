@@ -83,9 +83,15 @@ Every setup command replies with **what changed** (`**Timezone:** UTC → Europe
 
 ### Running the games
 
+`/admin message-test game:halloween message:<pick>` previews any message members can see (visitor arrival, win
+card, duplicate, winner's private reply, candy-limit reply, wrong answer, visitor leaving, results, announcement; the
+snowball and Advent messages too) with your real visitors, pictures and texts. Pick **All** to see every message for
+that game. Optional `visitor:` / `day:` choose what to show, and `public:true` posts it in the channel. Nothing is
+saved and buttons are disabled.
+
 | `/admin …` (Manage Server) | `/mod …` (staff role) |
 | --- | --- |
-| `start`, `end` (with keep/remove Champion role), `give-candy`, `undo-candy`, `fix-stats`, `fix-item`, `clear-warmup`, `announce`, `export`, `audit` | `pause`, `resume`, `exclude`, `include`, `cancel-visitor`, `preview`, `candy-history`, `repost-door`, `fix-role` |
+| `start`, `end` (with keep/remove Champion role), `message-test`, `give-candy`, `undo-candy`, `fix-stats`, `fix-item`, `clear-warmup`, `announce`, `export`, `audit` | `pause`, `resume`, `exclude`, `include`, `cancel-visitor`, `preview`, `candy-history`, `repost-door`, `fix-role` |
 
 ### Members
 

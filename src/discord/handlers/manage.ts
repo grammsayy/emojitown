@@ -36,6 +36,7 @@ import { cancelVisitor, fixItem, fixRole, halloweenPreview, setChampionRole, syn
 import { rescheduleSpawnIfSooner } from '../../domain/halloween.js';
 import { announcementEmbed, auditEmbed, exportFile, fetchAttachmentJson, finishEnd, requireTargetEvent, stateLabel } from './season.js';
 import { askStatsFix, snowballPreview } from './snowball.js';
+import { messageTest } from './messageTest.js';
 
 const GAME_ICON: Record<Feature, string> = { halloween: '🎃', snowball: '❄️', advent: '🎄' };
 
@@ -539,6 +540,7 @@ export const manageHandlers: HandlerSet = {
     'admin clear-warmup': adminClearWarmup,
     'admin announce': adminAnnounce,
     'admin export': adminExport,
+    'admin message-test': messageTest,
     'admin audit': async (bot, i) => {
       const u = i.options.getUser('member');
       await reply(i, { embeds: [auditEmbed(bot, i.guildId, u ? { id: u.id, displayName: u.displayName } : null)] });

@@ -1,3 +1,4 @@
+import type { SnowballPack } from '../../content/types.js';
 import { ButtonStyle, PermissionFlagsBits, UserSelectMenuBuilder, type GuildMember, type GuildTextBasedChannel, type User } from 'discord.js';
 import { getChannels } from '../../domain/config.js';
 import { fill } from '../../domain/content.js';
@@ -49,23 +50,32 @@ const collectButton = () => button(cid('sb', 'collect'), 'Collect', ButtonStyle.
 async function doCollect(bot: Bot, i: ChatInput | Component): Promise<void> {
   assertSnowballChannel(bot, i.guildId, i.channelId!);
   const r = collect(bot.ctx, i.guildId, i.user.id);
-  const pack = packFor(bot.ctx, r.event);
-  const e = withImage(embed(COLORS.snow, 'Snowball collected! ❄️', r.message), pack.images.collect).addFields(
-    field('Snowballs', String(r.stats.snowballs), true),
-    field('Next collect', discordTime(r.stats.nextCollectAt, 'R'), true),
+  await reply(i, collectMessage(packFor(bot.ctx, r.event), r.message, r.stats.snowballs, r.stats.nextCollectAt));
+}
+
+/** The private reply after collecting a snowball. */
+export function collectMessage(pack: SnowballPack, message: string, snowballs: number, nextCollectAt: number) {
+  const e = withImage(embed(COLORS.snow, 'Snowball collected! ❄️', message), pack.images.collect).addFields(
+    field('Snowballs', String(snowballs), true),
+    field('Next collect', discordTime(nextCollectAt, 'R'), true),
   );
-  await reply(i, { embeds: [e], components: [row(throwButton())] });
+  return { embeds: [e], components: [row(throwButton())] };
+}
+
+/** The public throw result. */
+export function throwMessage(hit: boolean, message: string, image: string | undefined, throwerName: string, left: number, targetMention: string, warmUntil: number) {
+  const e = withImage(embed(hit ? COLORS.hit : COLORS.miss, hit ? 'Direct hit! 🎯' : 'Missed! 💨', message), image).addFields(
+    field(`${throwerName} has`, `${left} snowball${left === 1 ? '' : 's'} left`, true),
+  );
+  if (hit) e.addFields(field('Warming up', `${targetMention} can collect again ${discordTime(warmUntil, 'R')}`, true));
+  return { embeds: [e], components: [row(collectButton())] };
 }
 
 async function doThrow(bot: Bot, i: ChatInput | Component, target: User, member: GuildMember | null): Promise<void> {
   assertSnowballChannel(bot, i.guildId, i.channelId!);
   validateTarget(target, member, i.channel);
   const r = throwSnowball(bot.ctx, i.guildId, i.user.id, target.id);
-  const e = withImage(embed(r.hit ? COLORS.hit : COLORS.miss, r.hit ? 'Direct hit! 🎯' : 'Missed! 💨', r.message), r.image).addFields(
-    field(`${i.user.displayName} has`, `${r.thrower.snowballs} snowball${r.thrower.snowballs === 1 ? '' : 's'} left`, true),
-  );
-  if (r.hit) e.addFields(field('Warming up', `${target} can collect again ${discordTime(r.target.warmUntil, 'R')}`, true));
-  await publicReply(i, { embeds: [e], components: [row(collectButton())] }, r.hit ? [target.id] : []);
+  await publicReply(i, throwMessage(r.hit, r.message, r.image, i.user.displayName, r.thrower.snowballs, `${target}`, r.target.warmUntil), r.hit ? [target.id] : []);
 }
 
 async function statsCmd(bot: Bot, i: ChatInput): Promise<void> {

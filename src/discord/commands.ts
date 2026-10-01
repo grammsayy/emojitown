@@ -283,6 +283,16 @@ const adminCommand = command('admin', 'Run the emojitown games (admins)')
         o.setName('channel').setDescription('Where to post').setRequired(true).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement),
       ),
   )
+  .addSubcommand((s) =>
+    s
+      .setName('message-test')
+      .setDescription('Preview any message members can see, with your real content (nothing is saved)')
+      .addStringOption(gameOpt)
+      .addStringOption((o) => o.setName('message').setDescription('Which message (or All)').setRequired(true).setAutocomplete(true))
+      .addStringOption((o) => o.setName('visitor').setDescription('Halloween: use this visitor (default: random)').setAutocomplete(true))
+      .addIntegerOption((o) => o.setName('day').setDescription('Advent: use this door (default: first written door)').setMinValue(1).setMaxValue(31))
+      .addBooleanOption((o) => o.setName('public').setDescription('Post it in this channel for everyone (default: only you see it)')),
+  )
   .addSubcommand((s) => s.setName('export').setDescription('Download all data for a game').addStringOption(gameOpt).addStringOption(seasonOpt))
   .addSubcommand((s) =>
     s

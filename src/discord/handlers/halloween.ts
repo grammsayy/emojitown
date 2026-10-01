@@ -2,7 +2,7 @@ import { CLASS_LABEL, DUPLICATE_NOTE, getClasses } from '../../domain/classes.js
 import { resolveImage } from '../images.js';
 import { discordTime, formatSeconds } from '../../util/time.js';
 import { ButtonStyle, type AttachmentBuilder, type Guild, type MessageEditOptions, type Role, type User } from 'discord.js';
-import { RARITIES, type HalloweenItem, type HalloweenPack, type Rarity } from '../../content/types.js';
+import { RARITIES, type HalloweenItem, type HalloweenPack, type HalloweenVisitor, type Rarity } from '../../content/types.js';
 import { audit } from '../../domain/audit.js';
 import { getRoleState, refreshAllChampions, resetRoleHolder } from '../../domain/champion.js';
 import { getConfig, getStaffRoles, updateConfig } from '../../domain/config.js';
@@ -123,26 +123,10 @@ async function answer(bot: Bot, i: ChatInput | Component, action: HalloweenActio
     await reply(i, `❌ ${r.message}`);
     return;
   }
-  const e = embed(
-    COLORS.halloween,
-    r.duplicate ? 'Already collected!' : 'New item! 🎃',
-    `${r.visitor.name} gave you **${r.item.name}** (${RARITY_LABEL[r.item.rarity]}).\n${r.item.description}`,
+  await reply(
+    i,
+    winnerReply(bot, i.guildId, { ...r, unique: uniqueCount(bot.ctx, i.guildId, r.encounter.eventId, i.user.id) }),
   );
-  const itemImg = resolveImage(bot, i.guildId, r.item.image);
-  if (itemImg) e.setThumbnail(itemImg.url);
-  const bonusText = r.bonus > 0 ? ` (includes +${r.bonus} ${RARITY_LABEL[visitorClass(r.visitor)]} bonus)` : '';
-  const candyText =
-    r.candy > 0
-      ? `🍬 +${r.candy} candy${bonusText}${r.capped ? ' (daily Halloween limit reached)' : ''}`
-      : r.capped
-        ? "🍬 You've reached today's Halloween candy limit. Your item still counts!"
-        : '—';
-  e.addFields(
-    field('Collection', `${uniqueCount(bot.ctx, i.guildId, r.encounter.eventId, i.user.id)} unique items`, true),
-    field('Candy', candyText, true),
-  );
-  if (r.duplicate) e.addFields(field('Duplicate', "Duplicates don't raise your collection score, but they're recorded in your history."));
-  await reply(i, { embeds: [e], files: itemImg?.file ? [itemImg.file] : [] });
 
   if (i.isButton() && i.message.id === r.encounter.messageId) {
     const pack = packFor(bot.ctx, getCurrentEvent(bot.ctx, i.guildId, 'halloween')!);
@@ -154,6 +138,31 @@ async function answer(bot: Bot, i: ChatInput | Component, action: HalloweenActio
     await syncEncounterMessage(bot, i.guild, r.encounter);
   }
   if (getRoleState(bot.ctx, i.guildId).pending) void syncChampionRole(bot, i.guildId);
+}
+
+/** The private reply a winner gets. */
+export function winnerReply(
+  bot: Bot,
+  guildId: string,
+  r: { visitor: HalloweenVisitor; item: HalloweenItem; duplicate: boolean; candy: number; bonus: number; capped: boolean; unique: number },
+) {
+  const e = embed(
+    COLORS.halloween,
+    r.duplicate ? 'Already collected!' : 'New item! 🎃',
+    `${r.visitor.name} gave you **${r.item.name}** (${RARITY_LABEL[r.item.rarity]}).\n${r.item.description}`,
+  );
+  const itemImg = resolveImage(bot, guildId, r.item.image);
+  if (itemImg) e.setThumbnail(itemImg.url);
+  const bonusText = r.bonus > 0 ? ` (includes +${r.bonus} ${RARITY_LABEL[visitorClass(r.visitor)]} bonus)` : '';
+  const candyText =
+    r.candy > 0
+      ? `🍬 +${r.candy} candy${bonusText}${r.capped ? ' (daily Halloween limit reached)' : ''}`
+      : r.capped
+        ? "🍬 You've reached today's Halloween candy limit. Your item still counts!"
+        : '—';
+  e.addFields(field('Collection', `${r.unique} unique items`, true), field('Candy', candyText, true));
+  if (r.duplicate) e.addFields(field('Duplicate', "Duplicates don't raise your collection score, but they're recorded in your history."));
+  return { embeds: [e], files: itemImg?.file ? [itemImg.file] : [] };
 }
 
 function inventoryView(bot: Bot, guildId: string, userId: string, eventId: string | null, rarity: Rarity | null, page: number) {
