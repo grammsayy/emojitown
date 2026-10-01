@@ -27,8 +27,10 @@ function command(name: string, description: string) {
 }
 
 // ── Member commands ──────────────────────────────────────────────────
+// Game commands are only registered in a server while that game is live
+// (see commandsFor); shared commands are always there.
 
-const memberCommands = [
+const snowballCommands = [
   command('collect', 'Snowball Fights: make a snowball'),
   command('throw', 'Snowball Fights: throw a snowball at someone').addUserOption((o) =>
     o.setName('target').setDescription('Who to throw at').setRequired(true),
@@ -39,7 +41,9 @@ const memberCommands = [
   command('snowball', 'Snowball Fights: join or leave')
     .addSubcommand((s) => s.setName('join').setDescription('Play snowball fights (you are in by default)'))
     .addSubcommand((s) => s.setName('leave').setDescription("Stop playing: nobody can throw at you and you can't throw")),
+];
 
+const halloweenCommands = [
   command('trick', 'Halloween: answer the visitor in this channel with a Trick'),
   command('treat', 'Halloween: answer the visitor in this channel with a Treat'),
   command('inventory', 'Halloween: your collected items')
@@ -51,11 +55,15 @@ const memberCommands = [
         .addChoices({ name: 'common', value: 'common' }, { name: 'uncommon', value: 'uncommon' }, { name: 'rare', value: 'rare' }),
     )
     .addStringOption(seasonOpt),
+];
 
+const adventCommands = [
   command('advent', "Advent Calendar: open today's door, or pick a day").addIntegerOption((o) =>
     o.setName('day').setDescription('Door number (default: today)').setMinValue(1).setMaxValue(31),
   ),
+];
 
+const sharedCommands = [
   command('candy', 'Your candy balance and history').addUserOption((o) => o.setName('member').setDescription('Whose balance (default: you)')),
   command('leaderboard', 'Standings for a game or for candy')
     .addStringOption((o) =>
@@ -282,7 +290,30 @@ const modCommand = command('mod', 'Event staff tools')
   )
   .addSubcommand((s) => s.setName('fix-role').setDescription('Re-check who should have the Halloween Champion role'));
 
-export const commands = [...memberCommands, setupCommand, adminCommand, modCommand];
+const staffCommands = [setupCommand, adminCommand, modCommand];
+
+export const GAME_COMMANDS: Record<'snowball' | 'halloween' | 'advent', SlashCommandBuilder[]> = {
+  snowball: snowballCommands as SlashCommandBuilder[],
+  halloween: halloweenCommands as SlashCommandBuilder[],
+  advent: adventCommands as SlashCommandBuilder[],
+};
+
+/** Every command the bot handles. */
+export const commands = [...snowballCommands, ...halloweenCommands, ...adventCommands, ...sharedCommands, ...staffCommands];
+
+/**
+ * The commands to register in one server: shared and staff commands always,
+ * plus each live game's commands. Members never see commands for games that
+ * aren't running.
+ */
+export function commandsFor(liveGames: Iterable<'snowball' | 'halloween' | 'advent'>) {
+  const live = new Set(liveGames);
+  return [
+    ...(['halloween', 'snowball', 'advent'] as const).flatMap((g) => (live.has(g) ? GAME_COMMANDS[g] : [])),
+    ...sharedCommands,
+    ...staffCommands,
+  ];
+}
 
 /**
  * Required level for a command key (`command` or `command sub`). Discord hides

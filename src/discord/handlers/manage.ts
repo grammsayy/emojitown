@@ -26,6 +26,7 @@ import { clearWarmup, getPlayer } from '../../domain/snowball.js';
 import type { ContentFeature } from '../../content/types.js';
 import { addDays, formatSeconds, isValidZone, parseDate, parseDuration, parseTime } from '../../util/time.js';
 import { askConfirm, reply, type ChatInput, type HandlerSet } from '../interaction.js';
+import { describeDiff, syncGuildCommands } from '../commandSync.js';
 import { discordChecks, featureChannelIds } from '../results.js';
 import { assertSafeStaffRole, syncChampionRole, type Bot } from '../runtime.js';
 import { COLORS, embed, field, when } from '../ui.js';
@@ -256,6 +257,8 @@ async function setupGame(bot: Bot, i: ChatInput, game: Feature) {
   ev = getEvent(bot.ctx, i.guildId, ev.id)!;
   const started = await startIfDue(bot, i, ev);
   if (started) changes.push(started);
+  const visible = describeDiff(await syncGuildCommands(bot, i.guild));
+  if (visible) changes.push(visible);
   ev = getEvent(bot.ctx, i.guildId, ev.id)!;
 
   const cfg = getConfig(bot.ctx, i.guildId);
@@ -390,7 +393,10 @@ async function adminStart(bot: Bot, i: ChatInput) {
   const d = await discordChecks(bot, i.guild, ev.feature);
   const started = startEvent(bot.ctx, i.guildId, ev.id, i.user.id, d.errors);
   if (started.feature === 'halloween') void syncChampionRole(bot, i.guildId);
-  const e = resultEmbed(`${GAME_ICON[ev.feature]} ${ev.name}`, [`**Status:** ${stateLabel(ev)} → 🟢 live now`], COLORS.hit).addFields(
+  const lines = [`**Status:** ${stateLabel(ev)} → 🟢 live now`];
+  const visible = describeDiff(await syncGuildCommands(bot, i.guild));
+  if (visible) lines.push(visible);
+  const e = resultEmbed(`${GAME_ICON[ev.feature]} ${ev.name}`, lines, COLORS.hit).addFields(
     field('Ends', when(windowFor(bot.ctx, started).endsAt)),
   );
   if (d.warnings.length) e.addFields(...readinessFields([], d.warnings));
@@ -546,7 +552,8 @@ export const manageHandlers: HandlerSet = {
       run: async (bot, i, { eventId, keep }: { eventId: string; keep?: boolean }) => {
         const before = requireEvent(bot.ctx, i.guildId, eventId);
         const ev = await finishEnd(bot, i.guild, eventId, i.user.id, keep);
-        return `**${ev.name}:** ${stateLabel(before)} → 🏁 ended. Results were posted.`;
+        const visible = describeDiff(await syncGuildCommands(bot, i.guild));
+        return `**${ev.name}:** ${stateLabel(before)} → 🏁 ended. Results were posted.${visible ? `\n${visible}` : ''}`;
       },
     },
     'season.announce': {

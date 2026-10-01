@@ -302,3 +302,41 @@ describe('help and export', () => {
     expect(getEvent(w.ctx, 'g1', 'snowball-fights-2026')).not.toBeNull();
   });
 });
+
+describe('command visibility follows which games are live', () => {
+  it('shows only the live game’s commands, and reports when they appear or disappear', async () => {
+    const w = new World('2026-10-05T12:00:00Z');
+    await w.tick();
+    expect(w.registered).toEqual(['admin', 'candy', 'events', 'help', 'leaderboard', 'mod', 'setup']);
+
+    const setup = await w.command('owner', 'setup halloween', { channel: 'spooky' });
+    expect(text(setup)).toContain('**Member commands:** now showing /inventory, /treat, /trick');
+    expect(w.registered).toContain('trick');
+    expect(w.registered).not.toContain('collect');
+    expect(w.registered).not.toContain('advent');
+
+    // Nothing changed, so the scheduler doesn't touch Discord again.
+    const syncs = w.commandSyncs;
+    await w.tick();
+    expect(w.commandSyncs).toBe(syncs);
+
+    // Pausing keeps the commands (they explain the pause); ending hides them.
+    await w.command('owner', 'mod pause', { game: 'halloween', reason: 'x' });
+    await w.tick();
+    expect(w.registered).toContain('trick');
+    const end = await w.command('owner', 'admin end', { game: 'halloween' });
+    expect(text(await confirmLast(w, 'owner', end))).toContain('hidden /inventory, /treat, /trick');
+    expect(w.registered).not.toContain('trick');
+  });
+
+  it('a scheduled game’s commands appear by themselves when it starts', async () => {
+    const w = new World('2026-11-28T12:00:00Z');
+    await w.command('owner', 'setup snowball', { channel: 'snow' });
+    await w.tick();
+    expect(w.registered).not.toContain('collect');
+    w.ctx.set('2026-12-01T00:00:30Z');
+    await w.tick();
+    expect(w.registered).toEqual(expect.arrayContaining(['collect', 'throw', 'stats', 'snowball']));
+    expect(w.registered).not.toContain('trick');
+  });
+});

@@ -7,6 +7,7 @@ import { abortEncounter, attachMessage, packFor, tickHalloween, unsyncedEncounte
 import { pauseEvent, pendingResults, SYSTEM_ACTOR, tickEvents } from '../domain/lifecycle.js';
 import { announcementMessage, recoveryMessage } from './handlers/advent.js';
 import { syncEncounterMessage, visitorMessage } from './handlers/halloween.js';
+import { syncGuildCommands } from './commandSync.js';
 import { postResults } from './results.js';
 import { alertStaff, fetchTextChannel, isMissingChannelError, syncChampionRole, type Bot } from './runtime.js';
 
@@ -124,6 +125,8 @@ export async function tickGuild(bot: Bot, guild: Guild): Promise<void> {
     await checkChannels(bot, guild);
     await tickTrickOrTreat(bot, guild);
     await tickAdvent(bot, guild);
+    // Show or hide game commands as games start and end (no-op when unchanged).
+    await syncGuildCommands(bot, guild);
     if (getRoleState(bot.ctx, guild.id).pending) await syncChampionRole(bot, guild.id);
   } catch (err) {
     console.error(`[${guild.id}] scheduler tick failed`, err);

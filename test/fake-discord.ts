@@ -4,6 +4,7 @@
  */
 import type { Bot } from '../src/discord/runtime.js';
 import { route } from '../src/discord/router.js';
+import { resetCommandSync } from '../src/discord/commandSync.js';
 import { tickGuild } from '../src/discord/scheduler.js';
 import { GUILD, makeCtx, type TestCtx } from './helpers.js';
 
@@ -31,9 +32,13 @@ export class World {
   members = new Map<string, any>();
   roles = new Map<string, any>();
   guild: any;
+  /** Command names currently registered in the fake server. */
+  registered: string[] = [];
+  commandSyncs = 0;
   private seq = 0;
 
   constructor(startIso: string) {
+    resetCommandSync();
     this.ctx = makeCtx(startIso);
     const botUser = this.user('bot', { bot: true });
     const me = this.member('bot', false);
@@ -41,6 +46,13 @@ export class World {
     this.guild = {
       id: GUILD,
       ownerId: 'owner',
+      commands: {
+        set: async (json: { name: string }[]) => {
+          this.registered = json.map((c) => c.name).sort();
+          this.commandSyncs++;
+          return json;
+        },
+      },
       channels: { cache: this.channels, fetch: async (id: string) => this.channels.get(id) ?? null },
       roles: { cache: this.roles, fetch: async (id: string) => this.roles.get(id) ?? null },
       members: {

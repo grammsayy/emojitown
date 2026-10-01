@@ -31,17 +31,17 @@ built-in `node:sqlite`, so nothing needs compiling and no C++ build tools are re
    The bot does **not** need Administrator. In Server Settings → Roles, place the bot's role **above** the Champion role.
 3. **Configure** the environment (see `.env.example`): `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, and `DATABASE_PATH`
    (on persistent storage).
-4. **Install, register commands, start:**
+4. **Install and start:**
    ```sh
    npm ci
    npm run build
-   node --env-file=.env dist/scripts/deploy-commands.js   # once, and after command changes
    node --env-file=.env dist/src/index.js
    ```
-   With `DEV_GUILD_ID` set, commands register to that one server instantly; otherwise globally (up to an hour).
+   The bot registers its own commands in each server at startup, so there is no separate register step. After
+   pulling an update, rebuild and restart. `dist/scripts/deploy-commands.js` only cleans up command registrations
+   left over from older versions.
 
 Docker: `docker build -t emojitown-bot .` then run with the env vars and a volume mounted at `/data`.
-Register commands with `docker run --rm --env-file .env emojitown-bot node dist/scripts/deploy-commands.js`.
 
 Development: `npm test` (Vitest), `npm run typecheck`, `npm run dev` (runs from source with tsx).
 
@@ -74,6 +74,12 @@ Every setup command replies with **what changed** (`**Timezone:** UTC → Europe
 `/leaderboard` `/events` `/help`
 
 ### Who can see what
+
+**Game commands only appear while that game is live.** In October members see `/trick`, `/treat` and `/inventory`
+but not `/collect` or `/advent`; in December the snowball and Advent commands appear instead. `/candy`,
+`/leaderboard`, `/events` and `/help` are always there. The bot updates the list itself within about 15 seconds of a
+game starting or ending (immediately when started or ended with a command), and the setup reply tells you which
+commands appeared or disappeared. A paused game keeps its commands so they can explain the pause.
 
 `/setup`, `/admin` and `/mod` are hidden from regular members (they require **Manage Server** by default). The bot
 also checks permissions on every command, button and form itself, so changing Discord's command settings never
