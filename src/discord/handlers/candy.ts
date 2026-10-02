@@ -5,7 +5,7 @@ import { getConfig } from '../../domain/config.js';
 import { UserError } from '../../domain/errors.js';
 import { requireEvent } from '../../domain/events.js';
 import { askConfirm, reply, type Button, type ChatInput, type HandlerSet } from '../interaction.js';
-import { assertLevel, type Bot } from '../runtime.js';
+import { assertLevel, memberName, type Bot } from '../runtime.js';
 import { button, cid, COLORS, embed, field, pager, rankLabel, row } from '../ui.js';
 
 const SOURCE_LABEL: Record<CandyTxn['source'], string> = {
@@ -27,7 +27,7 @@ export function historyView(bot: Bot, guildId: string, userId: string, page: num
   const e = embed(
     COLORS.candy,
     '🍬 Candy history',
-    `<@${userId}> · balance **${getBalance(bot.ctx, guildId, userId)}**${eventId ? ` · event \`${eventId}\`` : ''}\n\n${h.items.map(txnLine).join('\n') || 'No candy activity yet.'}`,
+    `${memberName(bot, guildId, userId)} · balance **${getBalance(bot.ctx, guildId, userId)}**${eventId ? ` · event \`${eventId}\`` : ''}\n\n${h.items.map(txnLine).join('\n') || 'No candy activity yet.'}`,
   );
   return {
     embeds: [e],
@@ -38,7 +38,7 @@ export function historyView(bot: Bot, guildId: string, userId: string, page: num
 export function leaderboardView(bot: Bot, guildId: string, eventId: string | null, page: number) {
   const ev = eventId ? requireEvent(bot.ctx, guildId, eventId) : null;
   const lb = candyLeaderboard(bot.ctx, guildId, ev?.id ?? null, page);
-  const lines = lb.items.map((r) => `**${rankLabel(r.rank)}** <@${r.row.userId}> · 🍬 ${r.row.amount}`);
+  const lines = lb.items.map((r) => `**${rankLabel(r.rank)}** ${memberName(bot, guildId, r.row.userId)} · 🍬 ${r.row.amount}`);
   const e = embed(COLORS.candy, ev ? `🍬 Candy earned in ${ev.name}` : '🍬 Candy leaderboard (all-time balances)', lines.join('\n') || 'No candy yet.');
   return { embeds: [e], components: lb.pages > 1 ? [pager(lb, (n) => cid('candy', 'lb', ev?.id ?? '-', n))] : [] };
 }

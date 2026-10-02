@@ -20,8 +20,8 @@ import {
 import { endEvent } from '../../domain/lifecycle.js';
 import { reply, type ChatInput, type HandlerSet } from '../interaction.js';
 import { featureChannelIds, postResults } from '../results.js';
-import { syncChampionRole, type Bot } from '../runtime.js';
-import { COLORS, embed, field, mention, truncate, when } from '../ui.js';
+import { memberName, syncChampionRole, type Bot } from '../runtime.js';
+import { COLORS, embed, field, truncate, when } from '../ui.js';
 import { policyText } from './advent.js';
 import { leaderboardView as candyLeaderboard } from './candy.js';
 import { leaderboardView as halloweenLeaderboard, syncEncounterMessage } from './halloween.js';
@@ -58,7 +58,7 @@ async function events(bot: Bot, i: ChatInput) {
     }
     const win = windowFor(bot.ctx, ev);
     const lines = [`**${ev.name}**: ${stateLabel(ev)}`, `${when(win.startsAt)} → ${when(win.endsAt)}`, `Where: ${channels}`];
-    if (f === 'halloween' && ev.state !== 'scheduled') lines.push(`👑 Champion: ${mention(storedChampion(bot.ctx, i.guildId, ev.id))}`);
+    if (f === 'halloween' && ev.state !== 'scheduled') lines.push(`👑 Champion: ${memberName(bot, i.guildId, storedChampion(bot.ctx, i.guildId, ev.id))}`);
     if (f === 'advent') lines.push(policyText(cfg.adventPolicy, win.claimDeadline));
     e.addFields(field(FEATURE_LABEL[f], lines.join('\n')));
   }

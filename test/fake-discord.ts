@@ -62,6 +62,7 @@ export class World {
       roles: { cache: this.roles, fetch: async (id: string) => this.roles.get(id) ?? null },
       members: {
         me,
+        cache: this.members,
         fetchMe: async () => me,
         fetch: async (id: string) => {
           const m = this.members.get(id);
@@ -93,6 +94,7 @@ export class World {
     const m: any = {
       id,
       user: this.users.get(id),
+      displayName: `${id[0]!.toUpperCase()}${id.slice(1)}`,
       permissions: { has: () => admin },
       roles: {
         cache: new Map<string, unknown>(),

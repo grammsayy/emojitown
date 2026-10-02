@@ -8,6 +8,7 @@ import {
   type GuildTextBasedChannel,
   type MessageCreateOptions,
   type Role,
+  escapeMarkdown,
 } from 'discord.js';
 import type { AuditEntry, Ctx } from '../domain/context.js';
 import { getRoleState, markRoleFailed, markRoleSynced } from '../domain/champion.js';
@@ -31,6 +32,17 @@ export function isModerator(bot: Bot, member: GuildMember): boolean {
   if (isAdmin(member)) return true;
   const roles = getStaffRoles(bot.ctx, member.guild.id);
   return roles.some((r) => member.roles.cache.has(r));
+}
+
+/**
+ * A member's name for embeds. The Discord phone app often can't show <@id>
+ * mentions inside embeds (they appear as "@unknown-user" or raw numbers), so
+ * use the name when the bot knows it, and the mention otherwise.
+ */
+export function memberName(bot: Bot, guildId: string, userId: string | null | undefined, none = 'nobody yet'): string {
+  if (!userId) return none;
+  const m = bot.client.guilds.cache.get(guildId)?.members.cache?.get(userId);
+  return m ? `**${escapeMarkdown(m.displayName)}**` : `<@${userId}>`;
 }
 
 export function assertLevel(bot: Bot, member: GuildMember, level: Level): void {

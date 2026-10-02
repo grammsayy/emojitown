@@ -5,8 +5,8 @@ import { getChannel, getChannels, getConfig } from '../domain/config.js';
 import { FEATURE_LABEL, getEvent, markResultsPosted, type Feature, type SeasonEvent } from '../domain/events.js';
 import { leaderboard as hwLeaderboard } from '../domain/halloween.js';
 import { leaderboard as sbLeaderboard } from '../domain/snowball.js';
-import { fetchTextChannel, postToLogs, type Bot } from './runtime.js';
-import { COLORS, embed, field, mention, rankLabel } from './ui.js';
+import { fetchTextChannel, memberName, postToLogs, type Bot } from './runtime.js';
+import { COLORS, embed, field, rankLabel } from './ui.js';
 
 export function featureChannelIds(bot: Bot, guildId: string, feature: Feature): string[] {
   return feature === 'advent' ? [getChannel(bot.ctx, guildId, 'advent')].filter((c): c is string => !!c) : getChannels(bot.ctx, guildId, feature);
@@ -16,12 +16,12 @@ export function resultsEmbed(bot: Bot, ev: SeasonEvent) {
   const e = embed(COLORS.brand, `🏁 ${ev.name} has ended!`, `Thanks for playing ${FEATURE_LABEL[ev.feature]} in emojitown. Final results:`);
   if (ev.feature === 'snowball') {
     const lb = sbLeaderboard(bot.ctx, ev.guildId, ev.id, 1).page;
-    e.addFields(field('Top throwers', lb.items.map((r) => `${rankLabel(r.rank)} <@${r.row.userId}> · ${r.row.hits} hits`).join('\n') || 'No hits recorded.'));
+    e.addFields(field('Top throwers', lb.items.map((r) => `${rankLabel(r.rank)} ${memberName(bot, ev.guildId, r.row.userId)} · ${r.row.hits} hits`).join('\n') || 'No hits recorded.'));
   } else if (ev.feature === 'halloween') {
     const lb = hwLeaderboard(bot.ctx, ev.guildId, ev.id, 1);
     e.addFields(
-      field('👑 Halloween Champion', mention(ev.finalChampionId)),
-      field('Top collectors', lb.page.items.map((r) => `${rankLabel(r.rank)} <@${r.row.userId}> · ${r.row.unique}/${lb.total}`).join('\n') || 'No items collected.'),
+      field('👑 Halloween Champion', memberName(bot, ev.guildId, ev.finalChampionId)),
+      field('Top collectors', lb.page.items.map((r) => `${rankLabel(r.rank)} ${memberName(bot, ev.guildId, r.row.userId)} · ${r.row.unique}/${lb.total}`).join('\n') || 'No items collected.'),
     );
   } else {
     const claims = bot.ctx.db
@@ -30,7 +30,7 @@ export function resultsEmbed(bot: Bot, ev: SeasonEvent) {
     e.addFields(field('Doors opened', `${claims.n} door openings by ${claims.members} members across ${listDoors(bot.ctx, ev.guildId, ev.id).length} doors`));
   }
   const candy = candyLeaderboard(bot.ctx, ev.guildId, ev.id, 1);
-  if (candy.total) e.addFields(field('🍬 Most candy this event', candy.items.slice(0, 5).map((r) => `${rankLabel(r.rank)} <@${r.row.userId}> · ${r.row.amount}`).join('\n')));
+  if (candy.total) e.addFields(field('🍬 Most candy this event', candy.items.slice(0, 5).map((r) => `${rankLabel(r.rank)} ${memberName(bot, ev.guildId, r.row.userId)} · ${r.row.amount}`).join('\n')));
   e.addFields(field('Archive', `Results stay viewable with \`season:${ev.id}\` on \`/leaderboard\`, \`/inventory\` and \`/stats\`.`));
   return e;
 }

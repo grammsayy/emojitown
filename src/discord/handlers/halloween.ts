@@ -31,7 +31,7 @@ import {
 } from '../../domain/halloween.js';
 import { paginate } from '../../domain/ranking.js';
 import { reply, type Button, type ChatInput, type Component, type HandlerSet } from '../interaction.js';
-import { assertSafeChampionRole, fetchTextChannel, syncChampionRole, type Bot } from '../runtime.js';
+import { assertSafeChampionRole, fetchTextChannel, memberName, syncChampionRole, type Bot } from '../runtime.js';
 import { button, cid, COLORS, embed, field, mention, pager, rankLabel, row, when } from '../ui.js';
 
 export const RARITY_LABEL: Record<Rarity, string> = CLASS_LABEL;
@@ -60,7 +60,7 @@ export function visitorMessage(bot: Bot, guildId: string, pack: HalloweenPack, e
     const item = visitor.items.find((i) => i.id === enc.itemId)!;
     const cls = getClasses(bot.ctx, guildId)[item.rarity];
     const tpl = visitor.winText ?? (enc.duplicate ? pack.messages.duplicate : pack.messages.win);
-    const vars = { winner: `<@${enc.winnerId}>`, name: visitor.name, item: item.name, rarity: RARITY_LABEL[item.rarity], request: enc.request };
+    const vars = { winner: memberName(bot, guildId, enc.winnerId), name: visitor.name, item: item.name, rarity: RARITY_LABEL[item.rarity], request: enc.request };
     e.setTitle(pack.messages.winTitle ?? 'Happy Halloween!')
       .setDescription(fill(tpl, vars))
       .setColor(RARITY_COLOR[item.rarity])
@@ -184,7 +184,7 @@ function inventoryView(bot: Bot, guildId: string, userId: string, eventId: strin
   const e = embed(
     COLORS.halloween,
     `🎒 Collection: ${inv.unique}/${inv.total}`,
-    `<@${userId}> · **${inv.event.name}**${rarity ? ` · showing ${RARITY_LABEL[rarity]}` : ''}\n\n${lines.join('\n') || 'Nothing here yet.'}`,
+    `${memberName(bot, guildId, userId)} · **${inv.event.name}**${rarity ? ` · showing ${RARITY_LABEL[rarity]}` : ''}\n\n${lines.join('\n') || 'Nothing here yet.'}`,
   ).addFields(
     ...RARITIES.filter((r) => inv.byRarity[r].total > 0 || inv.byRarity[r].owned > 0).map((r) =>
       field(RARITY_LABEL[r], `${inv.byRarity[r].owned}/${inv.byRarity[r].total}`, true),
@@ -213,7 +213,7 @@ function missingView(bot: Bot, guildId: string, userId: string, eventId: string 
   const e = embed(
     COLORS.halloween,
     `🔍 Missing: ${m.missingCount} of ${m.total}`,
-    `<@${userId}> · **${m.event.name}**\n\n${lines.join('\n') || 'Everything collected! 🏆'}`,
+    `${memberName(bot, guildId, userId)} · **${m.event.name}**\n\n${lines.join('\n') || 'Everything collected! 🏆'}`,
   );
   return { embeds: [e], components: [...(p.pages > 1 ? [pager(p, (n) => cid('hw', 'miss', userId, m.event.id, n))] : []), backButton(userId, m.event.id)] };
 }
@@ -222,15 +222,15 @@ function visitorsView(bot: Bot, guildId: string, userId: string, eventId: string
   const v = visitorsProgress(bot.ctx, guildId, userId, eventId);
   const p = paginate(v.visitors, page, 20);
   const lines = p.items.map((x) => `${x.owned === x.total ? '✅' : x.owned > 0 ? '🟡' : '⬜'} ${x.visitor.name} · ${x.owned}/${x.total}`);
-  const e = embed(COLORS.halloween, `👻 Visitors (${v.visitors.length})`, `<@${userId}> · **${v.event.name}**\n\n${lines.join('\n')}`);
+  const e = embed(COLORS.halloween, `👻 Visitors (${v.visitors.length})`, `${memberName(bot, guildId, userId)} · **${v.event.name}**\n\n${lines.join('\n')}`);
   return { embeds: [e], components: [...(p.pages > 1 ? [pager(p, (n) => cid('hw', 'vis', userId, v.event.id, n))] : []), backButton(userId, v.event.id)] };
 }
 
 export function leaderboardView(bot: Bot, guildId: string, eventId: string | null, page: number) {
   const lb = leaderboard(bot.ctx, guildId, eventId, page);
-  const lines = lb.page.items.map((r) => `**${rankLabel(r.rank)}** <@${r.row.userId}> · ${r.row.unique}/${lb.total}${r.row.userId === lb.championId ? ' 👑' : ''}`);
+  const lines = lb.page.items.map((r) => `**${rankLabel(r.rank)}** ${memberName(bot, guildId, r.row.userId)} · ${r.row.unique}/${lb.total}${r.row.userId === lb.championId ? ' 👑' : ''}`);
   const e = embed(COLORS.halloween, `🏆 Halloween leaderboard: ${lb.event.name}`, lines.join('\n') || 'No items collected yet.').addFields(
-    field(lb.event.state === 'ended' ? 'Final Champion' : 'Champion', mention(lb.championId)),
+    field(lb.event.state === 'ended' ? 'Final Champion' : 'Champion', memberName(bot, guildId, lb.championId)),
   );
   return { embeds: [e], components: lb.page.pages > 1 ? [pager(lb.page, (n) => cid('hw', 'lb', lb.event.id, n))] : [] };
 }

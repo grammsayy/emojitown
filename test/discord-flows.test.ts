@@ -129,7 +129,7 @@ describe('Halloween, set up with one command', () => {
     const card = JSON.stringify(enc.payload);
     expect(card).toContain('Happy Halloween!');
     expect(card).toContain('As a thank you for the trick');
-    expect(card).toContain('<@alice>');
+    expect(card).toContain('**Alice**'); // names, not mentions: phones can't always show mentions in embeds
     expect(card).toContain('It has been added to your inventory.');
     expect(card).toContain('+5 candy');
     expect(w.members.get('alice')!.roles.cache.has('champ')).toBe(true);
@@ -269,7 +269,7 @@ describe('Snowball Fights, set up with one command', () => {
     w.ctx.rolls = [0.9, 0];
     expect(text(await w.select('alice', 'sb|target', ['carol'], 'snow'))).toContain('Missed');
     expect(text(await w.command('alice', 'stats'))).toContain('Hits');
-    expect(text(await w.command('bob', 'leaderboard', { game: 'snowball' }))).toContain('<@alice>');
+    expect(text(await w.command('bob', 'leaderboard', { game: 'snowball' }))).toContain('**Alice**');
 
     expect(text(await w.command('bob', 'snowball leave'))).toContain('playing → left');
     expect(text(await w.command('bob', 'snowball leave'))).toContain('Nothing changed');
@@ -332,7 +332,7 @@ describe('Advent Calendar', () => {
     const candy = await w.command('bob', 'candy');
     expect(text(candy)).toContain('Balance: **20 candy**');
     expect(text(await w.button('bob', findCustomId(candy[0]!.payload, 'candy|hist|')!))).toContain('Advent door 4');
-    expect(text(await w.command('bob', 'leaderboard', { game: 'candy' }))).toContain('<@alice>');
+    expect(text(await w.command('bob', 'leaderboard', { game: 'candy' }))).toContain('**Alice**');
     expect(text(await w.staff('owner', 'game repost-door', { day: 4 }))).toContain('posted again');
   });
 });
@@ -458,7 +458,7 @@ describe('custom Halloween visitors and classes', () => {
     const win = await w.button('alice', findCustomId(post.payload, 'hw|trick|')!, post.message);
     expect(text(win)).toContain('+10 candy (includes +5 🟣 Rare bonus)');
     const card = JSON.stringify(post.message.payload);
-    expect(card).toContain('Ghosty swirls happily and gives <@alice> one **Ghost Pin**!');
+    expect(card).toContain('Ghosty swirls happily and gives **Alice** one **Ghost Pin**!');
     expect(card).toContain('This item is rare! Hold on to it tight.');
     expect(card).toContain('"image":{"url":"attachment://');
     expect(getBalance(w.ctx, 'g1', 'alice')).toBe(10);
@@ -647,5 +647,52 @@ describe('staff menus', () => {
     const i = await w.action('owner', 'visitor', 'add', { class: 'rare' });
     expect(i[0]!.type).toBe('modal'); // pressed Continue: the name and texts form opened
     expect(i[0]!.payload.custom_id).toMatch(/^visitorform\|/);
+  });
+});
+
+describe('inventory and leaderboard', () => {
+  /** Discord rejects a whole message (on phones and desktop) if two buttons share a custom ID. */
+  function uniqueIds(calls: { payload: any }[]) {
+    for (const c of calls) {
+      const list = (c.payload?.components ?? [])
+        .map((r: any) => (r.toJSON ? r.toJSON() : r))
+        .flatMap((r: any) => r.components.map((x: any) => x.custom_id).filter(Boolean));
+      expect(new Set(list).size, list.join(' ')).toBe(list.length);
+    }
+  }
+
+  it('pages through a big collection, with every filter, and shows names instead of mentions', async () => {
+    const w = new World('2026-10-05T12:00:00Z');
+    await serverSetup(w);
+    await w.staff('owner', 'season halloween', { channel: 'spooky' });
+    const items = DEFAULT_HALLOWEEN_PACK.visitors.flatMap((v) => v.items.map((i) => i.id)).slice(0, 25);
+    for (const item of items) await w.staff('owner', 'player give-item', { member: 'alice', item, reason: 'test' });
+
+    const inv = await w.command('alice', 'inventory');
+    uniqueIds(inv);
+    expect(text(inv)).toContain('**Alice**');
+    expect(text(inv)).not.toContain('<@alice>');
+    let payload = inv[0]!.payload;
+    for (const page of [2, 3]) {
+      const next = findCustomId(payload, `hw|inv|alice|halloween-2026|all|${page}`);
+      expect(next, `next to page ${page}`).toBeDefined();
+      const r = await w.button('alice', next!);
+      uniqueIds(r);
+      expect(r[0]!.type).toBe('update');
+      expect(text(r)).toContain(`Page ${page} of 3`);
+      payload = r[0]!.payload;
+    }
+    for (const rarity of ['common', 'uncommon', 'rare', 'legendary']) uniqueIds(await w.command('alice', 'inventory', { rarity }));
+    uniqueIds(await w.button('alice', findCustomId(inv[0]!.payload, 'hw|miss|')!));
+    uniqueIds(await w.button('alice', findCustomId(inv[0]!.payload, 'hw|vis|')!));
+    expect(text(await w.command('bob', 'inventory'))).toContain('0/120');
+
+    for (const game of ['halloween', 'snowball', 'candy']) {
+      const lb = await w.command('bob', 'leaderboard', { game });
+      uniqueIds(lb);
+      expect(text(lb)).not.toContain('went wrong');
+    }
+    const lb = text(await w.command('bob', 'leaderboard'));
+    expect(lb).toContain('**Alice** · 25/120 👑');
   });
 });

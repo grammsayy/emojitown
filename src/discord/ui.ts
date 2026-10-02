@@ -62,12 +62,17 @@ export function cid(...parts: (string | number)[]): string {
   return id;
 }
 
-/** Previous/next buttons. `make(page)` builds the custom ID for a page. */
+/**
+ * Previous/next buttons. `make(page)` builds the custom ID for a page. The
+ * `|prev`/`|next` ending keeps the IDs unique: Discord rejects a whole message
+ * if two buttons share an ID, e.g. "Previous" and an "All" filter that both
+ * point at page 1. Handlers ignore the extra part.
+ */
 export function pager(page: Page<unknown>, make: (page: number) => string) {
   return row(
-    button(make(page.page - 1), 'Previous', ButtonStyle.Secondary, '◀️', page.page <= 1),
+    button(`${make(page.page - 1)}|prev`, 'Previous', ButtonStyle.Secondary, '◀️', page.page <= 1),
     button(`noop|${page.page}`, `Page ${page.page} of ${page.pages}`, ButtonStyle.Secondary, undefined, true),
-    button(make(page.page + 1), 'Next', ButtonStyle.Secondary, '▶️', page.page >= page.pages),
+    button(`${make(page.page + 1)}|next`, 'Next', ButtonStyle.Secondary, '▶️', page.page >= page.pages),
   );
 }
 

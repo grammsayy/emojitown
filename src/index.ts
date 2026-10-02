@@ -48,8 +48,12 @@ client.once(Events.ClientReady, (c) => {
         `\n   ${inviteUrl(config.clientId, config.devGuildId ?? undefined)}\n`,
     );
   }
+  // Load member names so leaderboards can show names (phones often can't show mentions inside embeds).
+  for (const g of c.guilds.cache.values()) void g.members.fetch().catch((err) => console.warn(`could not load members of ${g.name}`, err));
   startScheduler(bot, config.tickIntervalMs);
 });
+
+client.on(Events.GuildCreate, (g) => void g.members.fetch().catch(() => undefined));
 
 client.on(Events.InteractionCreate, (i) => void route(bot, i));
 

@@ -22,7 +22,7 @@ import {
 import { getPack } from '../../domain/content.js';
 import { discordTime } from '../../util/time.js';
 import { askConfirm, publicReply, reply, type Button, type ChatInput, type Component, type HandlerSet } from '../interaction.js';
-import type { Bot } from '../runtime.js';
+import { memberName, type Bot } from '../runtime.js';
 import { button, cid, COLORS, embed, field, pager, rankLabel, row, withImage } from '../ui.js';
 
 function assertSnowballChannel(bot: Bot, guildId: string, channelId: string): void {
@@ -98,7 +98,7 @@ async function statsCmd(bot: Bot, i: ChatInput): Promise<void> {
 
 export function leaderboardView(bot: Bot, guildId: string, eventId: string | null, page: number) {
   const { event, page: p } = leaderboard(bot.ctx, guildId, eventId, page);
-  const lines = p.items.map((r) => `**${rankLabel(r.rank)}** <@${r.row.userId}> · ${r.row.hits} hit${r.row.hits === 1 ? '' : 's'}`);
+  const lines = p.items.map((r) => `**${rankLabel(r.rank)}** ${memberName(bot, guildId, r.row.userId)} · ${r.row.hits} hit${r.row.hits === 1 ? '' : 's'}`);
   const e = embed(COLORS.snow, `🏆 Snowball leaderboard: ${event.name}`, lines.join('\n') || 'No hits yet. Be the first!');
   return { embeds: [e], components: p.pages > 1 ? [pager(p, (n) => cid('sb', 'lb', event.id, n))] : [] };
 }
