@@ -21,14 +21,14 @@
   },
   "homepage": "https://github.com/grammsayy/emojitown#readme",
   "dependencies": {
-    "discord.js": "^14.27.0",
-    "luxon": "^3.7.2"
-  },
-  "devDependencies": {
     "@types/luxon": "^3.7.5",
     "@types/node": "^26.6.2",
+    "discord.js": "^14.27.0",
+    "luxon": "^3.7.2",
+    "typescript": "^7.0.2"
+  },
+  "devDependencies": {
     "tsx": "^4.23.15",
-    "typescript": "^7.0.2",
     "vitest": "^5.0.1"
   },
   "private": true,

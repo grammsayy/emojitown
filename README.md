@@ -44,10 +44,18 @@ built-in `node:sqlite`, so nothing needs compiling and no C++ build tools are re
 **Updating on Windows:** stop the bot (Ctrl+C in its window), then run `.\update.cmd` in the project folder. It pulls
 the latest version, reinstalls packages, rebuilds and starts the bot. Your `.env` and `data` folder are kept.
 
-**Bot hosting panels (PebbleHost, other Pterodactyl hosts):** choose Node.js 22 or newer, then upload
-`package.json`, `package-lock.json`, `index.js`, the `dist` folder (built on your PC with `npm run build`), your `.env`
-and your `data` folder. Don't upload `node_modules`; the panel installs packages itself. Set the startup file to
-`index.js`. The bot reads `.env` itself, so no extra settings are needed.
+**Bot hosting panels (PebbleHost, other Pterodactyl hosts):** pick the newest Node.js (22.13 or newer). The panel
+starts `index.js` (the `main` in `package.json`), which builds the bot from source on every start and then runs it, so
+updating is "pull from Git, then restart". The build tools are regular dependencies, so the panel's package install is
+enough.
+
+- **With Git (recommended):** clone `https://github.com/grammsayy/emojitown.git`, branch
+  `claude/inspiring-thompson-cvhtvd`. The repository is private, so use a GitHub *fine-grained personal access token*
+  with read-only **Contents** access to this one repository as the password. Then upload `.env` (and `data` to keep
+  existing progress) with the file manager or FTP. Git never touches those two.
+- **Without Git:** upload the project files (everything except `node_modules`, `test`, `.git`), plus `.env` and `data`.
+
+Set `SKIP_BUILD=1` in `.env` to skip the build and start the existing `dist` folder.
 
 **Running 24/7 (NAS or any Docker host):** put the project folder on the machine, add your `.env` next to
 `docker-compose.yml`, and run `docker compose up -d --build` (or create a *Project* from that folder in Synology
