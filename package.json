@@ -2,7 +2,7 @@
   "name": "emojitown-bot",
   "version": "1.0.0",
   "description": "emojitown seasonal Discord bot: Snowball Fights, Trick or Treat, Advent Calendar and Candy Counter",
-  "main": "dist/src/index.js",
+  "main": "index.js",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/src/index.js",
