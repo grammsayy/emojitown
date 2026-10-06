@@ -35,5 +35,7 @@
   "type": "module",
   "engines": {
     "node": ">=22.5"
-  }
+  },
+  "nodeVersion": "24.7.0",
+  "file": "index.js"
 }
