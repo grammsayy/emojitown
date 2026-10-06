@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "start": "node dist/src/index.js",
+    "start": "node index.js",
     "dev": "tsx src/index.ts",
     "deploy-commands": "tsx scripts/deploy-commands.ts",
     "typecheck": "tsc -p . --noEmit",
@@ -34,6 +34,6 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22.13"
+    "node": ">=22.5"
   }
 }
