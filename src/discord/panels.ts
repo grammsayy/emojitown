@@ -499,8 +499,16 @@ export const PANELS: Record<Panel['name'], Panel> = {
             kind: 'channel',
             id: 'channel',
             label: 'Channel to open (optional)',
-            description: 'Opened just for them with a personal permission, no role needed',
-            types: [ChannelType.GuildText, ChannelType.GuildVoice, ChannelType.GuildAnnouncement, ChannelType.GuildForum, ChannelType.GuildStageVoice],
+            description: 'Type to search. Opened just for them, no role needed',
+            types: [ChannelType.GuildText, ChannelType.GuildVoice, ChannelType.GuildAnnouncement, ChannelType.GuildForum, ChannelType.GuildStageVoice, ChannelType.GuildMedia],
+          },
+          {
+            kind: 'text',
+            id: 'channel_id',
+            label: '…or channel ID / name (optional)',
+            description: "If the channel isn't in the list: paste its ID or type its exact name",
+            max: 100,
+            placeholder: 'e.g. 1234567890123456789 or secret-room',
           },
           {
             kind: 'select',

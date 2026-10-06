@@ -164,3 +164,17 @@ describe('item rewards under load', () => {
     expect(hasRole(w, 'alice', VIP)).toBe(false);
   });
 });
+
+describe('item rewards: channel typed by ID or name', () => {
+  it('accepts a pasted channel ID, #mention or exact name when the picker does not list it', async () => {
+    const w = await setup();
+    expect(text(await w.action('owner', 'visitor', 'rewards', { item: ITEM.name, channel_id: SECRET }))).toContain(`**Channel access:** none → <#${SECRET}>`);
+    expect(text(await w.action('owner', 'visitor', 'rewards', { item: ITEM.name, what: 'remove-channel' }))).toContain('→ none');
+    expect(text(await w.action('owner', 'visitor', 'rewards', { item: ITEM.name, channel_id: `<#${SECRET}>` }))).toContain(`<#${SECRET}>`);
+    await w.action('owner', 'visitor', 'rewards', { item: ITEM.name, what: 'remove-channel' });
+    w.channel('secret-room');
+    expect(text(await w.action('owner', 'visitor', 'rewards', { item: ITEM.name, channel_id: '#secret-room' }))).toContain('<#secret-room>');
+    expect(text(await w.action('owner', 'visitor', 'rewards', { item: ITEM.name, channel_id: 'nope' }))).toContain('found. Paste its ID');
+    expect(text(await w.action('owner', 'visitor', 'rewards', { item: ITEM.name, channel: SECRET, channel_id: SECRET }))).toContain('not both');
+  });
+});

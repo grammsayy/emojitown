@@ -320,12 +320,25 @@ function rewardList(bot: Bot, guildId: string): string {
   return truncate(lines.join('\n') || 'No items unlock anything yet.', 1024);
 }
 
+/** A channel by ID, <#mention> or exact name, for when the picker doesn't list it. */
+function findChannel(guild: Guild, query: string): GuildBasedChannel {
+  const q = query.trim().replace(/^<#(\d+)>$/, '$1').replace(/^#/, '');
+  const byId = guild.channels.cache.get(q);
+  if (byId) return byId;
+  const byName = [...guild.channels.cache.values()].filter((c) => c.name.toLowerCase() === q.toLowerCase());
+  if (byName.length === 1) return byName[0]!;
+  if (byName.length > 1) throw new UserError(`${byName.length} channels are called "${q}". Paste the channel ID instead (right-click the channel → Copy Channel ID).`);
+  throw new UserError(`No channel "${q}" found. Paste its ID: right-click the channel → Copy Channel ID (turn on Developer Mode in Discord's Advanced settings).`);
+}
+
 /** `/visitor` → Item rewards: an item unlocks a role and/or a personal channel override. */
 async function itemRewards(bot: Bot, i: ChatInput) {
   const found = findItemLoose(currentPack(bot.ctx, i.guildId), i.options.getString('item', true));
   const what = i.options.getString('what') ?? 'set';
   const role = i.options.getRole('role');
-  const channel = i.options.getChannel('channel');
+  const typed = i.options.getString('channel_id');
+  if (typed && i.options.getChannel('channel')) throw new UserError('Pick the channel from the list **or** type its ID/name, not both.');
+  const channel = i.options.getChannel('channel') ?? (typed ? findChannel(i.guild, typed) : null);
   const before = getItemReward(bot.ctx, i.guildId, found.item.id);
   let next = { roleId: before?.roleId ?? null, channelId: before?.channelId ?? null };
   if (what === 'set') {
