@@ -27,6 +27,7 @@ import { defaultDates, FEATURE_LABEL, getTargetEvent, listEvents, seasonYear, ty
 import { SHEET_FILTERS } from '../domain/itemSheet.js';
 import { activeVisitors, visitorClass } from '../domain/halloween.js';
 import { currentPack, isPlaceholder } from '../domain/visitors.js';
+import { listItemRewards } from '../domain/rewards.js';
 import { reply, type ChatHandler, type ChatInput, type Component, type HandlerSet, type Modal } from './interaction.js';
 import { assertLevel, isAdmin, isModerator, type Bot, type Level } from './runtime.js';
 import { button, cid, COLORS, embed, field, row, truncate } from './ui.js';
@@ -425,6 +426,8 @@ export const PANELS: Record<Panel['name'], Panel> = {
         return `${CLASS_LABEL[r]}: **${n}** visitor${n === 1 ? '' : 's'} · chance ${classes[r].weight} · +${classes[r].bonusCandy} candy`;
       });
       const placeholders = active.filter(isPlaceholder).length;
+      const rewards = listItemRewards(bot.ctx, guild.id).length;
+      lines.push(`🔓 ${rewards} item${rewards === 1 ? '' : 's'} unlock${rewards === 1 ? 's' : ''} a role or channel`);
       return embed(COLORS.halloween, `👻 Halloween visitors (${active.length})`, lines.join('\n')).addFields(
         ...(placeholders ? [field('Placeholders', `${placeholders} are built-in examples. Replace them with your own visitors.`)] : []),
       );
@@ -482,6 +485,38 @@ export const PANELS: Record<Panel['name'], Panel> = {
           { kind: 'text', id: 'rarity_text', label: 'Rarity text (optional)', description: 'The line under the item picture. Empty keeps it', long: true, max: 200 },
         ],
         run: run('visitor class'),
+      },
+      {
+        id: 'rewards',
+        label: 'Item rewards',
+        description: 'Make an item give a role and/or open a channel for whoever wins it',
+        emoji: '🔓',
+        level: 'admin',
+        fields: () => [
+          itemField('Name of the item (or part of it), as in /inventory or the spreadsheet'),
+          { kind: 'role', id: 'role', label: 'Role to give (optional)', description: 'Given to everyone who owns the item' },
+          {
+            kind: 'channel',
+            id: 'channel',
+            label: 'Channel to open (optional)',
+            description: 'Opened just for them with a personal permission, no role needed',
+            types: [ChannelType.GuildText, ChannelType.GuildVoice, ChannelType.GuildAnnouncement, ChannelType.GuildForum, ChannelType.GuildStageVoice],
+          },
+          {
+            kind: 'select',
+            id: 'what',
+            label: 'What to do',
+            required: true,
+            value: 'set',
+            options: [
+              { label: 'Set the role / channel picked above', value: 'set', description: 'Anything left empty stays as it is' },
+              { label: 'Remove the role reward', value: 'remove-role' },
+              { label: 'Remove the channel reward', value: 'remove-channel' },
+              { label: 'Remove all rewards from this item', value: 'remove-all' },
+            ],
+          },
+        ],
+        run: run('visitor rewards'),
       },
       {
         id: 'export',

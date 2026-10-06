@@ -4,6 +4,7 @@ import { validateHalloweenPack } from './content.js';
 import type { Ctx } from './context.js';
 import { getImage, IMAGE_REF } from './images.js';
 import { visitorClass } from './halloween.js';
+import { getItemReward } from './rewards.js';
 
 /**
  * Spreadsheet round-trip for Halloween visitors and items: one row per item,
@@ -26,6 +27,8 @@ export const SHEET_HEADERS = [
   'treat_text',
   'win_text',
   'retired',
+  'reward_role_id',
+  'reward_channel_id',
 ] as const;
 
 export type SheetFilter = 'all' | Rarity | 'uncommon-rare';
@@ -45,7 +48,11 @@ function matches(filter: SheetFilter, r: Rarity): boolean {
   return r === filter;
 }
 
-export function exportSheet(pack: HalloweenPack, filter: SheetFilter): { csv: string; count: number } {
+export function exportSheet(
+  pack: HalloweenPack,
+  filter: SheetFilter,
+  rewards: Map<string, { roleId: string | null; channelId: string | null }> = new Map(),
+): { csv: string; count: number } {
   const rows: Record<string, string>[] = [];
   for (const v of pack.visitors) {
     for (const it of v.items) {
@@ -65,18 +72,33 @@ export function exportSheet(pack: HalloweenPack, filter: SheetFilter): { csv: st
         treat_text: v.treatRequest ?? '',
         win_text: v.winText ?? '',
         retired: v.retired ? 'yes' : 'no',
+        reward_role_id: rewards.get(it.id)?.roleId ?? '',
+        reward_channel_id: rewards.get(it.id)?.channelId ?? '',
       });
     }
   }
   return { csv: toCsv([...SHEET_HEADERS], rows), count: rows.length };
 }
 
+export interface RewardChange {
+  line: number;
+  itemId: string;
+  itemName: string;
+  roleId: string | null;
+  channelId: string | null;
+}
+
 export interface ImportPlan {
   pack: HalloweenPack;
   errors: string[];
   changes: string[];
-  counts: { itemsChanged: number; visitorsChanged: number; itemsAdded: number; visitorsAdded: number };
+  counts: { itemsChanged: number; visitorsChanged: number; itemsAdded: number; visitorsAdded: number; rewardsChanged: number };
+  /** Item rewards to set. The Discord layer checks the roles and channels exist and are safe before applying. */
+  rewards: RewardChange[];
 }
+
+/** A Discord ID: 17–20 digits. Spreadsheets sometimes add a leading apostrophe to keep long numbers intact. */
+const SNOWFLAKE = /^\d{17,20}$/;
 
 function slug(s: string): string {
   return (
@@ -94,14 +116,15 @@ export function planImport(ctx: Ctx, guildId: string, current: HalloweenPack, cs
   const pack: HalloweenPack = structuredClone(current);
   const errors: string[] = [];
   const changes: string[] = [];
-  const counts = { itemsChanged: 0, visitorsChanged: 0, itemsAdded: 0, visitorsAdded: 0 };
+  const counts = { itemsChanged: 0, visitorsChanged: 0, itemsAdded: 0, visitorsAdded: 0, rewardsChanged: 0 };
+  const rewards: RewardChange[] = [];
   const { headers, rows } = parseCsv(csvText);
 
   const required = ['item_id', 'visitor_name', 'item_name', 'item_rarity'];
   const missing = required.filter((h) => !headers.includes(h));
   if (missing.length) {
     errors.push(`The sheet is missing these columns: ${missing.join(', ')}. Start from a file made by \`/visitor\` → **Export items**.`);
-    return { pack, errors, changes, counts };
+    return { pack, errors, changes, counts, rewards };
   }
   if (rows.length === 0) errors.push('The sheet has no rows.');
   const has = (h: string) => headers.includes(h);
@@ -220,6 +243,31 @@ export function planImport(ctx: Ctx, guildId: string, current: HalloweenPack, cs
       changes.push(`Row ${line} · ${item.name}: ${itemDiffs.join(', ')}`);
     }
 
+    // Item rewards (role and/or personal channel access).
+    if (has('reward_role_id') || has('reward_channel_id')) {
+      const id = (col: string): string | null | false => {
+        if (!has(col)) return false; // column absent: keep as is
+        const v = g(col).replace(/^'/, '').trim();
+        if (!v) return null;
+        if (SNOWFLAKE.test(v)) return v;
+        errors.push(`Row ${line}: ${col} "${v}" isn't a Discord ID. Right-click the role or channel → Copy ID (turn on Developer Mode in Discord's Advanced settings).`);
+        return false;
+      };
+      const current = isNewItem ? null : getItemReward(ctx, guildId, item.id);
+      const roleId = id('reward_role_id');
+      const channelId = id('reward_channel_id');
+      const next = {
+        roleId: roleId === false ? (current?.roleId ?? null) : roleId,
+        channelId: channelId === false ? (current?.channelId ?? null) : channelId,
+      };
+      if (next.roleId !== (current?.roleId ?? null) || next.channelId !== (current?.channelId ?? null)) {
+        rewards.push({ line, itemId: item.id, itemName: item.name, ...next });
+        counts.rewardsChanged++;
+        const show = (r: string | null, c: string | null) => [r && `<@&${r}>`, c && `<#${c}>`].filter(Boolean).join(' + ') || 'none';
+        changes.push(`Row ${line} · ${item.name}: reward ${show(current?.roleId ?? null, current?.channelId ?? null)} → ${show(next.roleId, next.channelId)}`);
+      }
+    }
+
     // Visitor fields (repeated on each of the visitor's rows; they must agree).
     const desired: Partial<HalloweenVisitor> = { name: visitorName };
     if (cls) desired.rarity = cls;
@@ -270,5 +318,5 @@ export function planImport(ctx: Ctx, guildId: string, current: HalloweenPack, cs
     const result = validateHalloweenPack(pack);
     errors.push(...result.errors);
   }
-  return { pack, errors, changes, counts };
+  return { pack, errors, changes, counts, rewards };
 }

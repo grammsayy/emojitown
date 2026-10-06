@@ -385,6 +385,37 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE guild_config ADD COLUMN hw_cleanup_s INTEGER NOT NULL DEFAULT 5;
   `,
+  `
+  -- Items that unlock a role and/or a personal channel override for whoever owns them.
+  CREATE TABLE item_rewards (
+    guild_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    role_id TEXT,
+    channel_id TEXT,
+    PRIMARY KEY (guild_id, item_id)
+  );
+  -- What the bot has given each member, so it only ever takes back its own grants.
+  -- preexisting = the member already had it, so it is never taken away.
+  CREATE TABLE reward_grants (
+    guild_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    preexisting INTEGER NOT NULL DEFAULT 0,
+    granted_at INTEGER NOT NULL,
+    PRIMARY KEY (guild_id, user_id, kind, target_id)
+  );
+  -- Grants or removals Discord refused, retried later. Staff are alerted once per failure.
+  CREATE TABLE reward_failures (
+    guild_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    error TEXT NOT NULL,
+    retry_at INTEGER NOT NULL,
+    PRIMARY KEY (guild_id, user_id, kind, target_id)
+  );
+  `,
 ];
 
 export function migrate(db: DB): void {

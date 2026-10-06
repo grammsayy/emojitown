@@ -21,6 +21,10 @@ import {
   type VisitorInput,
 } from '../../domain/visitors.js';
 import { storeAttachedImage } from '../images.js';
+import { assertSafeRewardRole, assertUsableRewardChannel, syncPendingRewards } from '../rewards.js';
+import { getItemReward, itemOwnerCount, listItemRewards, setItemReward } from '../../domain/rewards.js';
+import { findItem, searchItem } from '../../domain/content.js';
+import type { Guild, GuildBasedChannel, Role } from 'discord.js';
 import { askConfirm, reply, type Button, type ChatHandler, type ChatInput, type Component, type HandlerSet, type Modal } from '../interaction.js';
 import { assertLevel, type Bot } from '../runtime.js';
 import { cid, COLORS, embed, field, pager, truncate } from '../ui.js';
@@ -217,14 +221,16 @@ const FILTER_LABEL: Record<SheetFilter, string> = Object.fromEntries(SHEET_FILTE
 
 async function exportItems(bot: Bot, i: ChatInput) {
   const filter = (i.options.getString('rarity') ?? 'all') as SheetFilter;
-  const { csv, count } = exportSheet(currentPack(bot.ctx, i.guildId), filter);
+  const rewards = new Map(listItemRewards(bot.ctx, i.guildId).map((r) => [r.itemId, r]));
+  const { csv, count } = exportSheet(currentPack(bot.ctx, i.guildId), filter, rewards);
   if (count === 0) throw new UserError(`There are no ${FILTER_LABEL[filter].toLowerCase()} items to export.`);
   await reply(i, {
     content:
       `**${count} ${FILTER_LABEL[filter].toLowerCase()} item${count === 1 ? '' : 's'}**, one per row. Nothing changed.\n` +
       '**How to edit:** open the file in Google Sheets (File → Import → Upload) or Excel (Data → From Text/CSV, UTF-8). ' +
       'Change names, rarities, descriptions, picture links or texts. **Don\'t change `item_id` or `visitor_id`.** ' +
-      'To add an item or visitor, add a row with `item_id` empty. Save as CSV (in Excel: **CSV UTF-8**) and upload it with `/visitor` → Import items.',
+      'To add an item or visitor, add a row with `item_id` empty. ' +
+      '**Rewards:** put a role ID in `reward_role_id` and/or a channel ID in `reward_channel_id` (right-click → Copy ID; needs Developer Mode on). Save as CSV (in Excel: **CSV UTF-8**) and upload it with `/visitor` → Import items.',
     files: [new AttachmentBuilder(Buffer.from(csv, 'utf8'), { name: `halloween-items-${filter}.csv` })],
   });
 }
@@ -236,6 +242,7 @@ function summary(plan: ImportPlan): string {
     c.visitorsChanged && `${c.visitorsChanged} visitor${c.visitorsChanged === 1 ? '' : 's'} changed`,
     c.visitorsAdded && `${c.visitorsAdded} new visitor${c.visitorsAdded === 1 ? '' : 's'}`,
     c.itemsAdded && `${c.itemsAdded} new item${c.itemsAdded === 1 ? '' : 's'}`,
+    c.rewardsChanged && `${c.rewardsChanged} item reward${c.rewardsChanged === 1 ? '' : 's'} changed`,
   ].filter(Boolean);
   return parts.join(' · ');
 }
@@ -252,6 +259,7 @@ async function importItems(bot: Bot, i: ChatInput) {
   if (!/\.(csv|txt)$/i.test(file.name)) throw new UserError('Upload the spreadsheet saved as a .csv file.');
   const csvText = await fetchAttachmentText(file.url);
   const plan = planImport(bot.ctx, i.guildId, currentPack(bot.ctx, i.guildId), csvText);
+  plan.errors.push(...rewardErrors(bot, i.guild, plan));
   if (plan.errors.length) {
     const errs = plan.errors.slice(0, 20).map((e) => `• ${e}`);
     if (plan.errors.length > 20) errs.push(`…and ${plan.errors.length - 20} more`);
@@ -265,6 +273,94 @@ async function importItems(bot: Bot, i: ChatInput) {
   await askConfirm(bot, i, 'visitor.import', { csvText }, embed(COLORS.warn, `Apply these changes? ${summary(plan)}`, changeList(plan)));
 }
 
+/** Finds an item by ID, exact name, or a part of the name that matches only one item. */
+function findItemLoose(pack: ReturnType<typeof currentPack>, query: string) {
+  const exact = searchItem(pack, query);
+  if (exact) return exact;
+  const q = query.trim().toLowerCase();
+  const hits = pack.visitors.flatMap((visitor) => visitor.items.filter((item) => item.name.toLowerCase().includes(q)).map((item) => ({ item, visitor })));
+  if (hits.length === 1) return hits[0]!;
+  if (hits.length > 1) throw new UserError(`"${query}" matches ${hits.length} items: ${truncate(hits.slice(0, 8).map((h) => h.item.name).join(', '), 300)}. Type more of the name.`);
+  throw new UserError(`No item called "${query}". Use the item's name as shown in /inventory or the spreadsheet (its item_id works too).`);
+}
+
+const roleRef = (id: string | null) => (id ? `<@&${id}>` : 'none');
+const channelRef = (id: string | null) => (id ? `<#${id}>` : 'none');
+
+/** Checks spreadsheet rewards against the server: the roles and channels must exist and be safe to hand out. */
+function rewardErrors(bot: Bot, guild: Guild, plan: ImportPlan): string[] {
+  const errors: string[] = [];
+  for (const r of plan.rewards) {
+    try {
+      if (r.roleId) {
+        const role = guild.roles.cache.get(r.roleId);
+        if (!role) throw new UserError(`reward_role_id ${r.roleId} isn't a role in this server.`);
+        assertSafeRewardRole(bot, guild, role);
+      }
+      if (r.channelId) {
+        const ch = guild.channels.cache.get(r.channelId);
+        if (!ch) throw new UserError(`reward_channel_id ${r.channelId} isn't a channel in this server.`);
+        assertUsableRewardChannel(guild, ch);
+      }
+    } catch (err) {
+      if (!(err instanceof UserError)) throw err;
+      errors.push(`Row ${r.line} (${r.itemName}): ${err.message}`);
+    }
+  }
+  return errors;
+}
+
+/** All item rewards, for the reply after a change. */
+function rewardList(bot: Bot, guildId: string): string {
+  const pack = currentPack(bot.ctx, guildId);
+  const lines = listItemRewards(bot.ctx, guildId).map((r) => {
+    const name = findItem(pack, r.itemId)?.item.name ?? r.itemId;
+    return `• **${name}** → ${[r.roleId && roleRef(r.roleId), r.channelId && channelRef(r.channelId)].filter(Boolean).join(' + ')}`;
+  });
+  return truncate(lines.join('\n') || 'No items unlock anything yet.', 1024);
+}
+
+/** `/visitor` → Item rewards: an item unlocks a role and/or a personal channel override. */
+async function itemRewards(bot: Bot, i: ChatInput) {
+  const found = findItemLoose(currentPack(bot.ctx, i.guildId), i.options.getString('item', true));
+  const what = i.options.getString('what') ?? 'set';
+  const role = i.options.getRole('role');
+  const channel = i.options.getChannel('channel');
+  const before = getItemReward(bot.ctx, i.guildId, found.item.id);
+  let next = { roleId: before?.roleId ?? null, channelId: before?.channelId ?? null };
+  if (what === 'set') {
+    if (!role && !channel) throw new UserError('Pick a role and/or a channel, or choose one of the Remove options.');
+    if (role) {
+      assertSafeRewardRole(bot, i.guild, role as Role);
+      next.roleId = role.id;
+    }
+    if (channel) {
+      assertUsableRewardChannel(i.guild, channel as GuildBasedChannel);
+      next.channelId = channel.id;
+    }
+  } else if (what === 'remove-role') next.roleId = null;
+  else if (what === 'remove-channel') next.channelId = null;
+  else next = { roleId: null, channelId: null };
+
+  const { after } = setItemReward(bot.ctx, i.guildId, found.item.id, next, i.user.id);
+  const changes: string[] = [];
+  if ((before?.roleId ?? null) !== (after?.roleId ?? null)) changes.push(`**Role:** ${roleRef(before?.roleId ?? null)} → ${roleRef(after?.roleId ?? null)}`);
+  if ((before?.channelId ?? null) !== (after?.channelId ?? null)) changes.push(`**Channel access:** ${channelRef(before?.channelId ?? null)} → ${channelRef(after?.channelId ?? null)}`);
+  const owners = itemOwnerCount(bot.ctx, i.guildId, found.item.id);
+  // Members who already own the item get (or lose) the reward now; the scheduler finishes any rest.
+  if (changes.length && owners) void syncPendingRewards(bot, i.guild, 50);
+  const e = embed(
+    COLORS.staff,
+    `🔓 Rewards for ${truncate(found.item.name, 200)}`,
+    changes.length ? `**What changed**\n${changes.join('\n')}` : '**Nothing changed.**',
+  ).addFields(
+    field('Who gets it', `Anyone who wins this item (from ${found.visitor.name}). The role is given and/or the channel opens just for them.`),
+    field('Already own it', owners ? `${owners} member${owners === 1 ? '' : 's'}: updated within a minute.` : 'Nobody yet.'),
+    field('All item rewards', rewardList(bot, i.guildId)),
+  );
+  await reply(i, { embeds: [e] });
+}
+
 /** Visitor actions, run from the /visitor menu (see panels.ts). */
 export const visitorActions: Record<string, ChatHandler> = {
   'visitor add': add,
@@ -274,6 +370,7 @@ export const visitorActions: Record<string, ChatHandler> = {
   'visitor class': setupClass,
   'visitor export': exportItems,
   'visitor import': importItems,
+  'visitor rewards': itemRewards,
 };
 
 export const visitorHandlers: HandlerSet = {
@@ -283,9 +380,14 @@ export const visitorHandlers: HandlerSet = {
       run: async (bot, i, { csvText }: { csvText: string }) => {
         // Re-check against the latest content in case something changed since the preview.
         const plan = planImport(bot.ctx, i.guildId, currentPack(bot.ctx, i.guildId), csvText);
+        plan.errors.push(...rewardErrors(bot, i.guild, plan));
         if (plan.errors.length) throw new UserError(`The spreadsheet no longer applies cleanly: ${plan.errors[0]}`);
         if (!plan.changes.length) return '**Nothing changed.**';
-        savePack(bot.ctx, i.guildId, plan.pack, i.user.id, 'visitor.import', { counts: plan.counts });
+        if (plan.counts.itemsChanged || plan.counts.itemsAdded || plan.counts.visitorsChanged || plan.counts.visitorsAdded) {
+          savePack(bot.ctx, i.guildId, plan.pack, i.user.id, 'visitor.import', { counts: plan.counts });
+        }
+        for (const r of plan.rewards) setItemReward(bot.ctx, i.guildId, r.itemId, { roleId: r.roleId, channelId: r.channelId }, i.user.id, 'reward.import');
+        if (plan.rewards.length) void syncPendingRewards(bot, i.guild, 50);
         return embed(COLORS.hit, `Imported: ${summary(plan)}`, `**What changed**\n${changeList(plan)}`);
       },
     },

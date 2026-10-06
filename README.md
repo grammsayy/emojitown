@@ -113,6 +113,7 @@ Always                /candy [member] · /leaderboard [game] [season] [page] · 
   Remove a visitor                One visitor, or all placeholder visitors
   List visitors
   Visitor classes                 Chance, bonus candy and rarity text of a class
+  Item rewards                    An item gives a role and/or opens a channel for its owner
   Export items (spreadsheet)      Download items as a CSV to mass-edit
   Import items (spreadsheet)      Upload the edited CSV (you confirm the changes first)
 
@@ -139,7 +140,8 @@ with two forms (adding a visitor, writing a door) show a **Continue** button bet
 | **Picture** / **link** | Pictures are stored by the bot (Discord attachment links expire). Type `none` in the link field when editing to remove the picture. |
 | **Win text** | The text on the win card, e.g. `As a thank you, they give {winner} one **{item}**`. Placeholders: `{winner}`, `{item}`, `{name}`, `{request}`. |
 | **Remove a visitor** | Visitors someone already collected from are retired instead, so nobody loses items. |
-| **Export** / **Import items** | One row per item: all, Common, Uncommon + Rare, or one rarity. Every row is checked (errors list the row number), then a summary is shown and applied only on **Confirm**. Rows with an empty `item_id` add new items/visitors. Don't change `item_id`/`visitor_id`. Excel: save as **CSV UTF-8**. |
+| **Item rewards** | Owning the item (in any season) gives a **role** and/or opens a **channel** just for that member, using a personal permission override with no role needed. Removing or wiping the item takes them back. Roles or access the member already had are never taken away. Refused changes (missing permissions, deleted role) retry every 10 minutes and alert staff once. Reward roles must not carry moderation permissions and must sit below the bot's role; for channels the bot needs **Manage Permissions** there. |
+| **Export** / **Import items** | One row per item: all, Common, Uncommon + Rare, or one rarity. Every row is checked (errors list the row number), then a summary is shown and applied only on **Confirm**. Rows with an empty `item_id` add new items/visitors. Don't change `item_id`/`visitor_id`. `reward_role_id` / `reward_channel_id` set item rewards by ID (right-click → Copy ID). Excel: save as **CSV UTF-8**. |
 
 How a visit is chosen: first a class, weighted by its chance (only classes that currently have visitors count), then
 one of that class's visitors at random. The winner gets the normal candy plus the class bonus (default +0 / +2 / +5 / +10),

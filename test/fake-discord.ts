@@ -2,6 +2,7 @@
  * A minimal in-memory stand-in for the parts of discord.js the handlers use,
  * so full command flows can run through the real router without a gateway.
  */
+import { PermissionFlagsBits } from 'discord.js';
 import type { Bot } from '../src/discord/runtime.js';
 import { route } from '../src/discord/router.js';
 import { resetCommandSync } from '../src/discord/commandSync.js';
@@ -123,6 +124,7 @@ export class World {
       isTextBased: () => true,
       toString: () => `<#${id}>`,
       permissionsFor: () => ({ has: () => true }),
+      permissionOverwrites: this.overwrites(),
       send: async (payload: any) => {
         const message = this.makeMessage(id, payload);
         this.sent.push({ channelId: id, payload, message });
@@ -138,6 +140,24 @@ export class World {
     };
     this.channels.set(id, ch);
     return ch;
+  }
+
+  /** Per-member channel permission overrides, like discord.js's PermissionOverwriteManager. */
+  private overwrites() {
+    const cache = new Map<string, { names: Set<string>; allow: { bitfield: bigint; has(p: bigint): boolean }; deny: { bitfield: bigint } }>();
+    const make = (names: Set<string>) => {
+      const bits = [...names].reduce((n, k) => n | (PermissionFlagsBits as Record<string, bigint>)[k]!, 0n);
+      return { names, allow: { bitfield: bits, has: (p: bigint) => (bits & p) === p }, deny: { bitfield: 0n } };
+    };
+    return {
+      cache,
+      edit: async (id: string, perms: Record<string, boolean | null>) => {
+        const names = new Set(cache.get(id)?.names ?? []);
+        for (const [k, v] of Object.entries(perms)) v ? names.add(k) : names.delete(k);
+        cache.set(id, make(names));
+      },
+      delete: async (id: string) => cache.delete(id),
+    };
   }
 
   private makeMessage(channelId: string, payload: any): FakeMessage {

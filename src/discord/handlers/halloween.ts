@@ -32,6 +32,8 @@ import {
 import { paginate } from '../../domain/ranking.js';
 import { reply, type Button, type ChatInput, type Component, type HandlerSet } from '../interaction.js';
 import { assertSafeChampionRole, fetchTextChannel, memberName, syncChampionRole, type Bot } from '../runtime.js';
+import { rewardText, syncMemberRewards } from '../rewards.js';
+import { getItemReward } from '../../domain/rewards.js';
 import { button, cid, COLORS, embed, field, mention, pager, rankLabel, row, when } from '../ui.js';
 
 export const RARITY_LABEL: Record<Rarity, string> = CLASS_LABEL;
@@ -151,6 +153,7 @@ async function answer(bot: Bot, i: ChatInput | Component, action: HalloweenActio
     await syncEncounterMessage(bot, i.guild, r.encounter);
   }
   if (getRoleState(bot.ctx, i.guildId).pending) void syncChampionRole(bot, i.guildId);
+  void syncMemberRewards(bot, i.guild, i.user.id);
 }
 
 /** The private reply a winner gets. */
@@ -175,6 +178,8 @@ export function winnerReply(
         : '—';
   e.addFields(field('Collection', `${r.unique} unique items`, true), field('Candy', candyText, true));
   if (r.duplicate) e.addFields(field('Duplicate', "Duplicates don't raise your collection score, but they're recorded in your history."));
+  const reward = getItemReward(bot.ctx, guildId, r.item.id);
+  if (reward && !r.duplicate) e.addFields(field('🔓 Unlocked', `This item gives you ${rewardText(bot.client.guilds.cache.get(guildId), reward.roleId, reward.channelId)}!`));
   return { embeds: [e], files: itemImg?.file ? [itemImg.file] : [] };
 }
 
@@ -307,14 +312,26 @@ export async function cancelVisitor(bot: Bot, i: ChatInput, reason: string): Pro
   return `**Visitor:** in <#${enc.channelId}> → sent away. Nobody got a reward, and the next visitor comes after the normal wait.`;
 }
 
+/** "Rewards: gave …, took back …" lines for staff replies. */
+export function rewardLines(r: { granted: { kind: string; targetId: string }[]; revoked: { kind: string; targetId: string }[]; failed: unknown[] }): string {
+  const name = (x: { kind: string; targetId: string }) => (x.kind === 'role' ? `<@&${x.targetId}>` : `<#${x.targetId}>`);
+  const lines: string[] = [];
+  if (r.granted.length) lines.push(`**Rewards given:** ${r.granted.map(name).join(', ')}`);
+  if (r.revoked.length) lines.push(`**Rewards taken back:** ${r.revoked.map(name).join(', ')}`);
+  if (r.failed.length) lines.push(`⚠️ ${r.failed.length} reward change${r.failed.length === 1 ? '' : 's'} failed; the bot retries automatically (see the log channel).`);
+  return lines.length ? `\n${lines.join('\n')}` : '';
+}
+
 export async function fixItem(bot: Bot, i: ChatInput, eventId: string, member: User, action: 'grant' | 'revoke', item: string, reason: string): Promise<string> {
   const before = uniqueCount(bot.ctx, i.guildId, eventId, member.id);
   const r = correctCollection(bot.ctx, i.guildId, eventId, member.id, action, item, reason, i.user.id);
   await syncChampionRole(bot, i.guildId);
+  const rewards = await syncMemberRewards(bot, i.guild, member.id);
   const after = uniqueCount(bot.ctx, i.guildId, eventId, member.id);
   return (
     `**${r.item.name}** ${action === 'grant' ? 'given to' : 'removed from'} ${member}.\n` +
-    `**Collection:** ${before} → ${after} unique items\n**Champion:** ${mention(r.champion.championId)}\nNo candy was changed.`
+    `**Collection:** ${before} → ${after} unique items\n**Champion:** ${mention(r.champion.championId)}\nNo candy was changed.` +
+    rewardLines(rewards)
   );
 }
 

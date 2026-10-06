@@ -32,7 +32,8 @@ import { assertLevel, assertSafeStaffRole, syncChampionRole, type Bot } from '..
 import { COLORS, embed, field, mention, when } from '../ui.js';
 import { postDoor, showDoorForm } from './advent.js';
 import { askGiveCandy, askUndoCandy, historyView } from './candy.js';
-import { cancelVisitor, fixItem, fixRole, setChampionRole, syncEncounterMessage, visitorStatusText } from './halloween.js';
+import { cancelVisitor, fixItem, fixRole, rewardLines, setChampionRole, syncEncounterMessage, visitorStatusText } from './halloween.js';
+import { syncMemberRewards, syncPendingRewards } from '../rewards.js';
 import { rescheduleSpawnIfSooner, wipeCollections } from '../../domain/halloween.js';
 import { announcementEmbed, auditEmbed, exportFile, fetchAttachmentJson, finishEnd, requireTargetEvent, stateLabel } from './season.js';
 import { askStatsFix } from './snowball.js';
@@ -633,7 +634,11 @@ export const manageHandlers: HandlerSet = {
         await syncChampionRole(bot, i.guildId);
         if (r.items === 0) return 'Those items were already gone. Nothing changed.';
         const who = userId ? `<@${userId}>'s collection` : `Collections (${r.members} members)`;
-        return `**${who} in ${r.event.name}:** ${r.items} item${r.items === 1 ? '' : 's'} → 0\n**Champion:** ${mention(r.champion.championId)}\nCandy was not changed.`;
+        // Item rewards (roles, channel access) follow: right away for one member, over the next minutes for everyone.
+        const rewards = userId ? rewardLines(await syncMemberRewards(bot, i.guild, userId)) : '';
+        if (!userId) void syncPendingRewards(bot, i.guild, 50);
+        const later = userId ? '' : '\nItem rewards (roles and channel access) are taken back over the next few minutes.';
+        return `**${who} in ${r.event.name}:** ${r.items} item${r.items === 1 ? '' : 's'} → 0\n**Champion:** ${mention(r.champion.championId)}\nCandy was not changed.${rewards}${later}`;
       },
     },
     'season.end': {
