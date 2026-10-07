@@ -28,6 +28,7 @@ import { SHEET_FILTERS } from '../domain/itemSheet.js';
 import { activeVisitors, visitorClass } from '../domain/halloween.js';
 import { currentPack, isPlaceholder } from '../domain/visitors.js';
 import { listItemRewards } from '../domain/rewards.js';
+import { currencyFor, DEFAULT_CURRENCY, getCurrencySettings, type Currency } from '../domain/currency.js';
 import { reply, type ChatHandler, type ChatInput, type Component, type HandlerSet, type Modal } from './interaction.js';
 import { assertLevel, isAdmin, isModerator, type Bot, type Level } from './runtime.js';
 import { button, cid, COLORS, embed, field, row, truncate } from './ui.js';
@@ -123,7 +124,7 @@ function visitorPick(bot: Bot, guildId: string, forRemove: boolean): Field {
 
 const classOptions = (bot: Bot, guildId: string) => {
   const classes = getClasses(bot.ctx, guildId);
-  return RARITIES.map((r) => ({ label: CLASS_LABEL[r], value: r, description: `chance ${classes[r].weight} · +${classes[r].bonusCandy} candy` }));
+  return RARITIES.map((r) => ({ label: CLASS_LABEL[r], value: r, description: `chance ${classes[r].weight} · +${classes[r].bonusCandy} ${currencyFor(bot.ctx, guildId, 'halloween').name}` }));
 };
 
 // ── The menus ────────────────────────────────────────────────────────
@@ -384,6 +385,40 @@ export const PANELS: Record<Panel['name'], Panel> = {
         run: run('game repost-door'),
       },
       {
+        id: 'currency',
+        label: 'Rename candy',
+        description: 'A seasonal name and emoji for candy, e.g. 🎃 candy corn or 🍪 cookies',
+        emoji: '🍬',
+        level: 'moderator',
+        fields: (bot, guild) => {
+          const c = getCurrencySettings(bot.ctx, guild.id);
+          const show = (x: Currency | null) => (x ? `${x.emoji} ${x.name}` : null);
+          const game = (id: Feature, label: string, example: string): Field => ({
+            kind: 'text',
+            id,
+            label,
+            description: `Empty = use the default. e.g. ${example}`,
+            value: show(c[id]),
+            max: 60,
+          });
+          return [
+            {
+              kind: 'text',
+              id: 'default',
+              label: 'Default name (emoji first)',
+              description: 'Used when no game has its own name. Custom server emoji work too',
+              value: show(c.default) ?? `${DEFAULT_CURRENCY.emoji} ${DEFAULT_CURRENCY.name}`,
+              required: true,
+              max: 60,
+            },
+            game('halloween', 'Halloween', '🎃 candy corn'),
+            game('snowball', 'Snowball Fights', '❄️ snowflakes'),
+            game('advent', 'Advent Calendar', '🍪 cookies'),
+          ];
+        },
+        run: run('season currency'),
+      },
+      {
         id: 'wipe-items',
         label: 'Wipe ALL Halloween items',
         description: "Deletes every member's items this season. Candy is kept. Asks to confirm",
@@ -423,7 +458,7 @@ export const PANELS: Record<Panel['name'], Panel> = {
       const classes = getClasses(bot.ctx, guild.id);
       const lines = RARITIES.map((r) => {
         const n = active.filter((v) => visitorClass(v) === r).length;
-        return `${CLASS_LABEL[r]}: **${n}** visitor${n === 1 ? '' : 's'} · chance ${classes[r].weight} · +${classes[r].bonusCandy} candy`;
+        return `${CLASS_LABEL[r]}: **${n}** visitor${n === 1 ? '' : 's'} · chance ${classes[r].weight} · +${classes[r].bonusCandy} ${currencyFor(bot.ctx, guild.id, 'halloween').name}`;
       });
       const placeholders = active.filter(isPlaceholder).length;
       const rewards = listItemRewards(bot.ctx, guild.id).length;

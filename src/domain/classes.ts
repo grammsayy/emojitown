@@ -25,7 +25,9 @@ export const DEFAULT_CLASSES: Record<Rarity, VisitorClass> = {
 };
 
 /** Footer on the win message when the winner already had the item. */
-export const DUPLICATE_NOTE = "You already had this one, so your collection didn't grow, but the candy is yours!";
+export function duplicateNote(currencyName: string): string {
+  return `You already had this one, so your collection didn't grow, but the ${currencyName} is yours!`;
+}
 
 export function getClasses(ctx: Ctx, guildId: string): Record<Rarity, VisitorClass> {
   const out = structuredClone(DEFAULT_CLASSES);

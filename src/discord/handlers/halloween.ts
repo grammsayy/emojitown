@@ -1,4 +1,5 @@
-import { CLASS_LABEL, DUPLICATE_NOTE, getClasses } from '../../domain/classes.js';
+import { CLASS_LABEL, duplicateNote, getClasses } from '../../domain/classes.js';
+import { currencyFor, currencyTitle } from '../../domain/currency.js';
 import { resolveImage } from '../images.js';
 import { discordTime, formatSeconds } from '../../util/time.js';
 import { ButtonStyle, type AttachmentBuilder, type Guild, type MessageEditOptions, type Role, type User } from 'discord.js';
@@ -70,8 +71,9 @@ export function visitorMessage(bot: Bot, guildId: string, pack: HalloweenPack, e
       .setThumbnail(null);
     const big = show(item.image ?? visitor.image);
     if (big) e.setImage(big);
-    const candy = enc.candyAwarded ? `\n🍬 +${enc.candyAwarded} candy` : '';
-    e.setFooter({ text: `${enc.duplicate ? DUPLICATE_NOTE : cls.description}${candy}` });
+    const cur = currencyFor(bot.ctx, guildId, 'halloween');
+    const candy = enc.candyAwarded ? `\n${cur.emoji} +${enc.candyAwarded} ${cur.name}` : '';
+    e.setFooter({ text: `${enc.duplicate ? duplicateNote(cur.name) : cls.description}${candy}` });
   } else {
     e.setTitle(`${visitor.name} has left`).setDescription(
       fill(enc.status === 'expired' ? pack.messages.expired : pack.messages.cancelled, { name: visitor.name }),
@@ -170,13 +172,14 @@ export function winnerReply(
   const itemImg = resolveImage(bot, guildId, r.item.image);
   if (itemImg) e.setThumbnail(itemImg.url);
   const bonusText = r.bonus > 0 ? ` (includes +${r.bonus} ${RARITY_LABEL[visitorClass(r.visitor)]} bonus)` : '';
+  const cur = currencyFor(bot.ctx, guildId, 'halloween');
   const candyText =
     r.candy > 0
-      ? `🍬 +${r.candy} candy${bonusText}${r.capped ? ' (daily Halloween limit reached)' : ''}`
+      ? `${cur.emoji} +${r.candy} ${cur.name}${bonusText}${r.capped ? ' (daily Halloween limit reached)' : ''}`
       : r.capped
-        ? "🍬 You've reached today's Halloween candy limit. Your item still counts!"
+        ? `${cur.emoji} You've reached today's Halloween ${cur.name} limit. Your item still counts!`
         : '—';
-  e.addFields(field('Collection', `${r.unique} unique items`, true), field('Candy', candyText, true));
+  e.addFields(field('Collection', `${r.unique} unique items`, true), field(currencyTitle(cur), candyText, true));
   if (r.duplicate) e.addFields(field('Duplicate', "Duplicates don't raise your collection score, but they're recorded in your history."));
   const reward = getItemReward(bot.ctx, guildId, r.item.id);
   if (reward && !r.duplicate) e.addFields(field('🔓 Unlocked', `This item gives you ${rewardText(bot.client.guilds.cache.get(guildId), reward.roleId, reward.channelId)}!`));
@@ -330,7 +333,7 @@ export async function fixItem(bot: Bot, i: ChatInput, eventId: string, member: U
   const after = uniqueCount(bot.ctx, i.guildId, eventId, member.id);
   return (
     `**${r.item.name}** ${action === 'grant' ? 'given to' : 'removed from'} ${member}.\n` +
-    `**Collection:** ${before} → ${after} unique items\n**Champion:** ${mention(r.champion.championId)}\nNo candy was changed.` +
+    `**Collection:** ${before} → ${after} unique items\n**Champion:** ${mention(r.champion.championId)}\nNo ${currencyFor(bot.ctx, i.guildId, 'halloween').name} was changed.` +
     rewardLines(rewards)
   );
 }

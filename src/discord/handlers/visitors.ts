@@ -5,6 +5,7 @@ import { RARITIES, type HalloweenVisitor, type Rarity } from '../../content/type
 import { audit } from '../../domain/audit.js';
 import { CLASS_LABEL, getClasses, setClass } from '../../domain/classes.js';
 import { consumePending, createPending } from '../../domain/confirmations.js';
+import { currencyFor } from '../../domain/currency.js';
 import { tx } from '../../domain/context.js';
 import { UserError } from '../../domain/errors.js';
 import { activeVisitors, visitorClass } from '../../domain/halloween.js';
@@ -43,7 +44,7 @@ interface FormPayload {
 
 function classLine(bot: Bot, guildId: string, cls: Rarity): string {
   const bonus = getClasses(bot.ctx, guildId)[cls].bonusCandy;
-  return `${CLASS_LABEL[cls]}${bonus ? ` (+${bonus} bonus candy)` : ''}`;
+  return `${CLASS_LABEL[cls]}${bonus ? ` (+${bonus} bonus ${currencyFor(bot.ctx, guildId, 'halloween').name})` : ''}`;
 }
 
 /** Typing this in the picture link field removes the picture. */
@@ -189,7 +190,7 @@ function listView(bot: Bot, guildId: string, page: number) {
   const summary = RARITIES.map((r) => {
     const count = active.filter((v) => visitorClass(v) === r).length;
     const pct = count && totalWeight ? `${((classes[r].weight / totalWeight) * 100).toFixed(0)}% of visits` : 'no visitors';
-    return `${CLASS_LABEL[r]}: ${count} visitor${count === 1 ? '' : 's'} · ${pct} · +${classes[r].bonusCandy} candy`;
+    return `${CLASS_LABEL[r]}: ${count} visitor${count === 1 ? '' : 's'} · ${pct} · +${classes[r].bonusCandy} ${currencyFor(bot.ctx, guildId, 'halloween').name}`;
   }).join('\n');
   const p = paginate(active, page, 20);
   const lines = p.items.map((v) => `${CLASS_LABEL[visitorClass(v)].split(' ')[0]} **${v.name}**${v.image ? ' 🖼️' : ''}${isPlaceholder(v) ? ' *(placeholder)*' : ''}`);
@@ -209,7 +210,7 @@ async function setupClass(bot: Bot, i: ChatInput) {
     const { before, after } = setClass(bot.ctx, i.guildId, cls, { weight: chance ?? undefined, bonusCandy: bonus ?? undefined, description: text ?? undefined });
     if (before.description !== after.description) changes.push(`**${CLASS_LABEL[cls]} rarity text:** "${before.description}" → "${after.description}"`);
     if (before.weight !== after.weight) changes.push(`**${CLASS_LABEL[cls]} chance:** ${before.weight} → ${after.weight}`);
-    if (before.bonusCandy !== after.bonusCandy) changes.push(`**${CLASS_LABEL[cls]} bonus candy:** +${before.bonusCandy} → +${after.bonusCandy}`);
+    if (before.bonusCandy !== after.bonusCandy) changes.push(`**${CLASS_LABEL[cls]} bonus ${currencyFor(bot.ctx, i.guildId, 'halloween').name}:** +${before.bonusCandy} → +${after.bonusCandy}`);
     if (changes.length) audit(bot.ctx, { guildId: i.guildId, actorId: i.user.id, action: 'setup.class', before: { [cls]: before }, after: { [cls]: after } });
   });
   const view = listView(bot, i.guildId, 1);

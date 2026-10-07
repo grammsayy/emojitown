@@ -9,6 +9,7 @@ import { announcementMessage, recoveryMessage } from './handlers/advent.js';
 import { syncEncounterMessage, visitorMessage } from './handlers/halloween.js';
 import { syncGuildCommands } from './commandSync.js';
 import { syncPendingRewards } from './rewards.js';
+import { currencyFor } from '../domain/currency.js';
 import { postResults } from './results.js';
 import { alertStaff, fetchTextChannel, isMissingChannelError, syncChampionRole, type Bot } from './runtime.js';
 
@@ -105,7 +106,7 @@ async function tickAdvent(bot: Bot, guild: Guild): Promise<void> {
     if (plan.kind === 'daily') {
       const door = getDoor(bot.ctx, guild.id, plan.event.id, plan.day);
       if (!door) return;
-      const msg = await channel.send(announcementMessage(plan.event, door, doorTimes(plan.event, cfg, plan.day).claimEndsAt, cfg.adventPolicy));
+      const msg = await channel.send(announcementMessage(plan.event, door, doorTimes(plan.event, cfg, plan.day).claimEndsAt, cfg.adventPolicy, currencyFor(bot.ctx, guild.id, 'advent')));
       markPosted(bot.ctx, guild.id, plan.event.id, [plan.day], channel.id, msg.id, false);
     } else {
       const doors = plan.days.map((d) => getDoor(bot.ctx, guild.id, plan.event.id, d)).filter((d) => d !== null);

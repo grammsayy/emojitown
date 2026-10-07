@@ -5,6 +5,7 @@ import { getConfig } from '../../domain/config.js';
 import { fill, getPack } from '../../domain/content.js';
 import { UserError } from '../../domain/errors.js';
 import { getCurrentEvent, getCurrentOrLatestEvent, getTargetEvent, SETUP_ACTION, type Feature, type SeasonEvent } from '../../domain/events.js';
+import { currencyFor } from '../../domain/currency.js';
 import { packFor as halloweenPack, pickVisitor, rollItem, visitorClass, type Encounter } from '../../domain/halloween.js';
 import { packFor as snowballPack, WARMUP_MS, COLLECT_COOLDOWN_MS } from '../../domain/snowball.js';
 import { findVisitorByQuery } from '../../domain/visitors.js';
@@ -171,7 +172,7 @@ function adventDoor(t: TestCtx) {
 
 const opened = (outcome: OpenResult['outcome']) => (t: TestCtx) => {
   const a = adventDoor(t);
-  return openResultMessage({ event: a.ev, door: a.door, times: a.times, outcome, candy: outcome === 'expired' || outcome === 'ineligible' ? 0 : a.door.candy, policy: a.cfg.adventPolicy });
+  return openResultMessage({ event: a.ev, door: a.door, times: a.times, outcome, candy: outcome === 'expired' || outcome === 'ineligible' ? 0 : a.door.candy, policy: a.cfg.adventPolicy }, currencyFor(t.bot.ctx, t.i.guildId, 'advent'));
 };
 
 const ADVENT: TestMessage[] = [
@@ -180,7 +181,7 @@ const ADVENT: TestMessage[] = [
     label: 'Daily door announcement (public)',
     build: (t) => {
       const a = adventDoor(t);
-      return announcementMessage(a.ev, a.door, a.times.claimEndsAt, a.cfg.adventPolicy);
+      return announcementMessage(a.ev, a.door, a.times.claimEndsAt, a.cfg.adventPolicy, currencyFor(t.bot.ctx, t.i.guildId, 'advent'));
     },
   },
   {

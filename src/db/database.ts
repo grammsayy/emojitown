@@ -416,6 +416,16 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (guild_id, user_id, kind, target_id)
   );
   `,
+  `
+  -- What candy is called (and its emoji) per game; 'default' is used when no game-specific name is set.
+  CREATE TABLE currency_names (
+    guild_id TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    name TEXT NOT NULL,
+    emoji TEXT NOT NULL,
+    PRIMARY KEY (guild_id, scope)
+  );
+  `,
 ];
 
 export function migrate(db: DB): void {

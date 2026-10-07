@@ -3,6 +3,7 @@ import { listDoors } from '../../domain/advent.js';
 import { listAudit } from '../../domain/audit.js';
 import { storedChampion } from '../../domain/champion.js';
 import { getConfig } from '../../domain/config.js';
+import { currencyFor } from '../../domain/currency.js';
 import { parsePackJson } from '../../domain/content.js';
 import { UserError } from '../../domain/errors.js';
 import {
@@ -80,12 +81,13 @@ async function leaderboard(bot: Bot, i: ChatInput) {
 export function announcementEmbed(bot: Bot, ev: SeasonEvent) {
   const win = windowFor(bot.ctx, ev);
   const channels = featureChannelIds(bot, ev.guildId, ev.feature).map((c) => `<#${c}>`).join(', ') || '—';
+  const cur = currencyFor(bot.ctx, ev.guildId, ev.feature);
   const how: Record<Feature, string> = {
     snowball:
       'Use `/collect` to make a snowball (one every 30 seconds), then `/throw` it at a friend. Half of all throws hit! Getting hit means a 2-minute warm-up before you can collect again, but you can still throw snowballs you already have. Check `/stats` and `/leaderboard`. Rather not play? `/snowball leave`.',
     halloween:
-      'Keep chatting and emojitown visitors will drop by. Each one asks for a **Trick** or a **Treat**; the first correct answer wins an item and candy. A wrong answer uses up your try for that visitor. Collect all items and become the Halloween Champion! See `/inventory` and `/leaderboard`.',
-    advent: 'A new door opens every day. Press **Open Door** or use `/advent` for a surprise and candy.',
+      `Keep chatting and emojitown visitors will drop by. Each one asks for a **Trick** or a **Treat**; the first correct answer wins an item and ${cur.name}. A wrong answer uses up your try for that visitor. Collect all items and become the Halloween Champion! See \`/inventory\` and \`/leaderboard\`.`,
+    advent: `A new door opens every day. Press **Open Door** or use \`/advent\` for a surprise and ${cur.name}.`,
   };
   const e = embed(COLORS.brand, `✨ ${ev.name} is ${ev.state === 'active' ? 'on' : 'coming'}!`, how[ev.feature]).addFields(
     field('When', `${when(win.startsAt)} → ${when(win.endsAt)}`),

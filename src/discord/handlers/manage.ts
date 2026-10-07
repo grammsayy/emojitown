@@ -4,6 +4,7 @@ import { audit } from '../../domain/audit.js';
 import { addChannel, getChannel, getChannels, getConfig, getStaffRoles, removeChannel, setStaffRole, updateConfig, type GuildConfig } from '../../domain/config.js';
 import { getPack, importPack, latestVersion } from '../../domain/content.js';
 import { tx } from '../../domain/context.js';
+import { amountText, CURRENCY_SCOPES, currencyFor, DEFAULT_CURRENCY, getCurrencySettings, parseCurrency, setCurrency, type Currency, type CurrencyScope } from '../../domain/currency.js';
 import { UserError } from '../../domain/errors.js';
 import {
   ensureEvent,
@@ -582,6 +583,36 @@ async function modRepostDoor(bot: Bot, i: ChatInput) {
   await reply(i, `Door ${day} announcement posted again: ${url}. Nobody's claims changed.`);
 }
 
+// ── /season → Rename candy ──
+
+const SCOPE_LABEL: Record<CurrencyScope, string> = { default: 'Default', halloween: 'Halloween', snowball: 'Snowball Fights', advent: 'Advent Calendar' };
+
+async function renameCurrency(bot: Bot, i: ChatInput) {
+  const settings = getCurrencySettings(bot.ctx, i.guildId);
+  const show = (c: Currency | null) => (c ? `${c.emoji} ${c.name}` : 'same as default');
+  const next: Partial<Record<CurrencyScope, Currency | null>> = {};
+  // Check every box before saving anything.
+  for (const scope of CURRENCY_SCOPES) {
+    const raw = i.options.getString(scope)?.trim() || null;
+    const keepEmoji = (settings[scope] ?? settings.default ?? DEFAULT_CURRENCY).emoji;
+    if (scope === 'default') next.default = raw ? parseCurrency(raw, keepEmoji) : settings.default;
+    else next[scope] = raw ? parseCurrency(raw, keepEmoji) : null;
+  }
+  const changes: string[] = [];
+  tx(bot.ctx, () => {
+    for (const scope of CURRENCY_SCOPES) {
+      if (setCurrency(bot.ctx, i.guildId, scope, next[scope] ?? null, i.user.id)) changes.push(`**${SCOPE_LABEL[scope]}:** ${show(settings[scope])} → ${show(next[scope] ?? null)}`);
+    }
+  });
+  const now = currencyFor(bot.ctx, i.guildId);
+  const e = resultEmbed('🍬 Candy names', changes).addFields(
+    ...CURRENCY_SCOPES.map((scope) => field(SCOPE_LABEL[scope], scope === 'default' ? show(next.default ?? DEFAULT_CURRENCY) : show(next[scope] ?? null), true)),
+    field('Showing right now', `${amountText(now, 5)}: used for balances, leaderboards and \`/help\`. Game messages use that game's name.`),
+    field('Good to know', "It's the same balance under every name; only the wording changes. Leave a game empty to use the default."),
+  );
+  await reply(i, { embeds: [e] });
+}
+
 /** Staff actions, run from the /settings, /season and /player menus (see panels.ts). */
 export const manageActions: Record<string, ChatHandler> = {
   'settings edit': setupServer,
@@ -597,6 +628,7 @@ export const manageActions: Record<string, ChatHandler> = {
   'season announce': adminAnnounce,
   'season wipe-items': (bot, i) => askWipe(bot, i, true),
   'season export': adminExport,
+  'season currency': renameCurrency,
 
   'adjust candy': (bot, i) => askGiveCandy(bot, i, i.options.getUser('member', true), i.options.getInteger('amount', true), i.options.getString('reason', true)),
   'adjust undo-candy': (bot, i) => askUndoCandy(bot, i, i.options.getInteger('transaction', true), i.options.getString('reason', true)),

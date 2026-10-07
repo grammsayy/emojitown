@@ -6,6 +6,7 @@ import { FEATURE_LABEL, getEvent, markResultsPosted, type Feature, type SeasonEv
 import { leaderboard as hwLeaderboard } from '../domain/halloween.js';
 import { leaderboard as sbLeaderboard } from '../domain/snowball.js';
 import { fetchTextChannel, memberName, postToLogs, type Bot } from './runtime.js';
+import { currencyFor } from '../domain/currency.js';
 import { COLORS, embed, field, rankLabel } from './ui.js';
 
 export function featureChannelIds(bot: Bot, guildId: string, feature: Feature): string[] {
@@ -30,7 +31,8 @@ export function resultsEmbed(bot: Bot, ev: SeasonEvent) {
     e.addFields(field('Doors opened', `${claims.n} door openings by ${claims.members} members across ${listDoors(bot.ctx, ev.guildId, ev.id).length} doors`));
   }
   const candy = candyLeaderboard(bot.ctx, ev.guildId, ev.id, 1);
-  if (candy.total) e.addFields(field('🍬 Most candy this event', candy.items.slice(0, 5).map((r) => `${rankLabel(r.rank)} ${memberName(bot, ev.guildId, r.row.userId)} · ${r.row.amount}`).join('\n')));
+  const cur = currencyFor(bot.ctx, ev.guildId, ev.feature);
+  if (candy.total) e.addFields(field(`${cur.emoji} Most ${cur.name} this event`, candy.items.slice(0, 5).map((r) => `${rankLabel(r.rank)} ${memberName(bot, ev.guildId, r.row.userId)} · ${r.row.amount}`).join('\n')));
   e.addFields(field('Archive', `Results stay viewable with \`season:${ev.id}\` on \`/leaderboard\`, \`/inventory\` and \`/stats\`.`));
   return e;
 }

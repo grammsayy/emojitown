@@ -1,4 +1,5 @@
 import { getConfig } from '../../domain/config.js';
+import { currencyFor, currencyTitle } from '../../domain/currency.js';
 import { COLLECT_COOLDOWN_MS, WARMUP_MS } from '../../domain/snowball.js';
 import { formatSeconds } from '../../util/time.js';
 import { reply, type HandlerSet } from '../interaction.js';
@@ -23,6 +24,9 @@ export const helpHandlers: HandlerSet = {
     help: async (bot, i) => {
       const game = i.options.getString('game');
       const cfg = getConfig(bot.ctx, i.guildId);
+      const cur = currencyFor(bot.ctx, i.guildId);
+      const hw = currencyFor(bot.ctx, i.guildId, 'halloween');
+      const adv = currencyFor(bot.ctx, i.guildId, 'advent');
       const support = field('Need help?', cfg.supportDestination ? `Ask in ${cfg.supportDestination}.` : 'Ask the event staff.');
       if (game === 'snowball') {
         return reply(i, {
@@ -44,9 +48,9 @@ export const helpHandlers: HandlerSet = {
             embed(COLORS.halloween, '🎃 Trick or Treat').addFields(
               field('Visitors', `Keep chatting and visitors drop by every ${formatSeconds(cfg.hwSpawnMinS)}–${formatSeconds(cfg.hwSpawnMaxS)}. Each asks for a **Trick** or a **Treat**.`),
               field('Answering', 'Press the button (or `/trick` / `/treat`). The first right answer wins. A wrong answer uses up your try for that visitor.'),
-              field('Classes', 'Visitors are Common, Uncommon, Rare or Legendary. Rarer visitors show up less often and give bonus candy.'),
+              field('Classes', `Visitors are Common, Uncommon, Rare or Legendary. Rarer visitors show up less often and give bonus ${hw.name}.`),
               field('Items', 'Each win gives you that visitor\'s collectible. Duplicates don\'t raise your score.'),
-              field('Candy', `${cfg.candyPerHalloweenWin} candy per win, up to ${cfg.candyHalloweenDailyLimit} a day.`),
+              field(currencyTitle(hw), `${cfg.candyPerHalloweenWin} ${hw.name} per win, up to ${cfg.candyHalloweenDailyLimit} a day.`),
               field('Champion', 'Whoever owns the most different items holds the Champion role. Ties keep the current Champion.'),
               field('/inventory · /leaderboard', 'See your collection (with Missing items and Visitors buttons) and the standings.'),
               support,
@@ -59,7 +63,7 @@ export const helpHandlers: HandlerSet = {
           embeds: [
             embed(COLORS.advent, '🎄 Advent Calendar').addFields(
               field('Doors', `A new door opens every day at ${cfg.adventUnlockTime} (${cfg.timezone}).`),
-              field('/advent', "Opens today's door. Add `day:` to open an earlier one. Each door gives its candy once."),
+              field('/advent', `Opens today's door. Add \`day:\` to open an earlier one. Each door gives its ${adv.name} once.`),
               field(
                 'Missed a day?',
                 cfg.adventPolicy === 'catch-up' ? 'Earlier doors can still be claimed until the calendar ends.' : 'Each door can only be claimed on its own day.',
@@ -72,10 +76,10 @@ export const helpHandlers: HandlerSet = {
       if (game === 'candy') {
         return reply(i, {
           embeds: [
-            embed(COLORS.candy, '🍬 Candy').addFields(
+            embed(COLORS.candy, `${cur.emoji} ${currencyTitle(cur)}`).addFields(
               field('Earning', 'Win Halloween visitors, open Advent doors, and take part in staff events.'),
               field('/candy · /leaderboard game:Candy', 'Your balance and history, and the standings.'),
-              field('Good to know', 'Your balance carries over between seasons. Candy has no shop, trading or cash value.'),
+              field('Good to know', `Your balance carries over between seasons. ${currencyTitle(cur)} has no shop, trading or cash value.`),
               support,
             ),
           ],
@@ -91,7 +95,7 @@ export const helpHandlers: HandlerSet = {
             field('❄️ Snowball Fights', '`/collect` · `/throw` · `/stats` · `/snowball leave|join`'),
             field('🎃 Trick or Treat', '`/trick` · `/treat` · `/inventory`'),
             field('🎄 Advent Calendar', '`/advent`'),
-            field('🍬 Candy', '`/candy`'),
+            field(`${cur.emoji} ${currencyTitle(cur)}`, '`/candy`'),
             field('For everything', "`/leaderboard` · `/events` (what's running)"),
             support,
             ...staffFields,

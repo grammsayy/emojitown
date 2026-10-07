@@ -104,6 +104,7 @@ Always                /candy [member] · /leaderboard [game] [season] [page] · 
   Send the visitor away
   Fix the Champion role
   Repost an Advent door
+  Rename candy                    A seasonal name and emoji per game, e.g. 🎃 candy corn, 🍪 cookies
   Wipe ALL Halloween items        Every member's items this season (asks to confirm)          admins
   Export data                     All data for one season as a file                           admins
 

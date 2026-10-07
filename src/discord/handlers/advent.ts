@@ -14,6 +14,7 @@ import {
   type OpenResult,
 } from '../../domain/advent.js';
 import { getChannel, getConfig, type GuildConfig } from '../../domain/config.js';
+import { amountText, currencyFor, DEFAULT_CURRENCY, type Currency } from '../../domain/currency.js';
 import { consumePending, createPending } from '../../domain/confirmations.js';
 import { UserError } from '../../domain/errors.js';
 import { requireEvent, type SeasonEvent } from '../../domain/events.js';
@@ -44,11 +45,11 @@ function doorComponents(ev: SeasonEvent, door: Door) {
   return [row(...buttons)];
 }
 
-export function openResultMessage(r: OpenResult) {
+export function openResultMessage(r: OpenResult, cur: Currency = DEFAULT_CURRENCY) {
   const e = doorEmbed(r.event, r.door);
   const note: Record<OpenResult['outcome'], string> = {
-    claimed: r.candy > 0 ? `🍬 You received **${r.candy} candy**!` : '✨ Door opened! This door has no candy reward.',
-    'already-claimed': `You already opened this door${r.candy ? ` and received ${r.candy} candy` : ''}. Enjoy it again!`,
+    claimed: r.candy > 0 ? `${cur.emoji} You received **${r.candy} ${cur.name}**!` : `✨ Door opened! This door has no ${cur.name} reward.`,
+    'already-claimed': `You already opened this door${r.candy ? ` and received ${r.candy} ${cur.name}` : ''}. Enjoy it again!`,
     expired: "This door's claim window has closed, so there's no reward, but you can still enjoy it.",
     ineligible: "You're not eligible for Advent rewards right now, but you can still enjoy the door.",
   };
@@ -65,7 +66,7 @@ export function calendarView(bot: Bot, guildId: string, userId: string, eventId:
   const deadline = cal.days.length ? cal.days[cal.days.length - 1]!.times.claimEndsAt : null;
   const e = embed(COLORS.advent, `📅 ${cal.event.name}`, lines.join('\n'))
     .addFields(
-      field('Your progress', `${prog.claimedDays.length}/${prog.doorCount} doors opened · 🍬 ${prog.candy} candy earned`),
+      field('Your progress', `${prog.claimedDays.length}/${prog.doorCount} doors opened · ${amountText(currencyFor(bot.ctx, guildId, 'advent'), prog.candy)} earned`),
       field('Legend', '🎁 available · ✅ opened · ⌛ missed (still readable, no reward) · 🔒 not yet'),
       field('Missed a day?', policyText(cal.policy, deadline)),
     );
@@ -90,8 +91,8 @@ export function calendarView(bot: Bot, guildId: string, userId: string, eventId:
 }
 
 /** The public daily announcement. */
-export function announcementMessage(ev: SeasonEvent, door: Door, claimEndsAt: number, policy: GuildConfig['adventPolicy']) {
-  const e = embed(COLORS.advent, `🎁 Door ${door.day} is open!`, `**${door.title}**\n\nPress **Open Door** or use \`/advent\` to see today's surprise${door.candy ? ` and collect **${door.candy} candy**` : ''}.`)
+export function announcementMessage(ev: SeasonEvent, door: Door, claimEndsAt: number, policy: GuildConfig['adventPolicy'], cur: Currency = DEFAULT_CURRENCY) {
+  const e = embed(COLORS.advent, `🎁 Door ${door.day} is open!`, `**${door.title}**\n\nPress **Open Door** or use \`/advent\` to see today's surprise${door.candy ? ` and collect **${door.candy} ${cur.name}**` : ''}.`)
     .addFields(field('Claim by', when(claimEndsAt)), field('Catch-up', policyText(policy, claimEndsAt)));
   return {
     embeds: [e],
@@ -202,7 +203,7 @@ export function doorPreview(bot: Bot, guildId: string, ev: SeasonEvent, day: num
   const cfg = getConfig(bot.ctx, guildId);
   const t = doorTimes(ev, cfg, day);
   const e = doorEmbed(ev, door).addFields(
-    field('Reward', door.candy ? `🍬 ${door.candy} candy` : 'No candy'),
+    field('Reward', door.candy ? amountText(currencyFor(bot.ctx, guildId, 'advent'), door.candy) : `No ${currencyFor(bot.ctx, guildId, 'advent').name}`),
     field('Unlocks', when(t.unlockAt), true),
     field('Claim by', when(t.claimEndsAt), true),
   );
@@ -216,7 +217,7 @@ export async function postDoor(bot: Bot, guildId: string, ev: SeasonEvent, day: 
   const channel = await fetchTextChannel(guild, getChannel(bot.ctx, guildId, 'advent'));
   if (!channel) throw new UserError('The Advent channel is missing or the bot cannot see it.');
   const { door, times } = requireUnlocked(bot.ctx, guildId, ev.id, day);
-  const msg = await channel.send(announcementMessage(ev, door, times.claimEndsAt, getConfig(bot.ctx, guildId).adventPolicy));
+  const msg = await channel.send(announcementMessage(ev, door, times.claimEndsAt, getConfig(bot.ctx, guildId).adventPolicy, currencyFor(bot.ctx, guildId, 'advent')));
   markPosted(bot.ctx, guildId, ev.id, [day], channel.id, msg.id, false);
   return msg.url;
 }
@@ -232,7 +233,7 @@ async function adventCmd(bot: Bot, i: ChatInput) {
       return reply(i, { content: `Today's door opens ${when(t.times.unlockAt)}. Here is the calendar:`, ...calendarView(bot, i.guildId, i.user.id, cal.event.id) });
     }
   }
-  return reply(i, openResultMessage(openDoor(bot.ctx, i.guildId, i.user.id, day)));
+  return reply(i, openResultMessage(openDoor(bot.ctx, i.guildId, i.user.id, day), currencyFor(bot.ctx, i.guildId, 'advent')));
 }
 
 export const adventHandlers: HandlerSet = {
@@ -242,10 +243,10 @@ export const adventHandlers: HandlerSet = {
   components: {
     advedit: editSubmit,
     adv: async (bot, i, [action, eventId, day]) => {
-      if (action === 'open') return reply(i, openResultMessage(openDoor(bot.ctx, i.guildId, i.user.id, Number(day), eventId)));
+      if (action === 'open') return reply(i, openResultMessage(openDoor(bot.ctx, i.guildId, i.user.id, Number(day), eventId), currencyFor(bot.ctx, i.guildId, 'advent')));
       if (action === 'cal') return reply(i, calendarView(bot, i.guildId, i.user.id, eventId!));
       if (action === 'pick' && i.isStringSelectMenu()) {
-        return reply(i, openResultMessage(openDoor(bot.ctx, i.guildId, i.user.id, Number(i.values[0]), eventId)));
+        return reply(i, openResultMessage(openDoor(bot.ctx, i.guildId, i.user.id, Number(i.values[0]), eventId), currencyFor(bot.ctx, i.guildId, 'advent')));
       }
       if (action === 'reveal') {
         const { door } = requireUnlocked(bot.ctx, i.guildId, eventId!, Number(day));
