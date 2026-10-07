@@ -1,5 +1,5 @@
 import { DEFAULT_HALLOWEEN_PACK } from '../content/defaultHalloween.js';
-import type { HalloweenPack, HalloweenVisitor, Rarity } from '../content/types.js';
+import type { HalloweenItem, HalloweenPack, HalloweenVisitor, Rarity } from '../content/types.js';
 import { audit } from './audit.js';
 import { getPack, latestVersion, validateHalloweenPack } from './content.js';
 import { tx, type Ctx } from './context.js';
@@ -132,6 +132,42 @@ export function editVisitor(
   v.retired = false;
   savePack(ctx, guildId, pack, actorId, 'visitor.edit', { visitor: v.id });
   return { before, after: structuredClone(v) };
+}
+
+export interface ItemPatch {
+  name?: string;
+  rarity?: Rarity;
+  description?: string;
+  /** New picture (URL or img: reference); null removes it. */
+  image?: string | null;
+}
+
+/** Edits one item of any visitor. The item keeps its ID, so everyone who owns it keeps it. */
+export function editItem(
+  ctx: Ctx,
+  guildId: string,
+  itemId: string,
+  patch: ItemPatch,
+  actorId: string,
+): { before: HalloweenItem; after: HalloweenItem; visitor: HalloweenVisitor } {
+  const pack = currentPack(ctx, guildId);
+  const visitor = pack.visitors.find((v) => v.items.some((i) => i.id === itemId));
+  if (!visitor) throw new UserError('That item no longer exists. Run the command again.');
+  const item = visitor.items.find((i) => i.id === itemId)!;
+  const before = structuredClone(item);
+  if (patch.name !== undefined) {
+    const name = patch.name.trim();
+    if (!name) throw new UserError('The item needs a name.');
+    if (visitor.items.some((i) => i.id !== itemId && i.name.toLowerCase() === name.toLowerCase())) {
+      throw new UserError(`${visitor.name} already gives an item called "${name}". Pick another name.`);
+    }
+    item.name = name;
+  }
+  if (patch.rarity) item.rarity = patch.rarity;
+  if (patch.description !== undefined) item.description = patch.description.trim() || item.description;
+  if (patch.image !== undefined) item.image = clean(patch.image);
+  if (JSON.stringify(before) !== JSON.stringify(item)) savePack(ctx, guildId, pack, actorId, 'item.edit', { item: itemId });
+  return { before, after: structuredClone(item), visitor: structuredClone(visitor) };
 }
 
 function isCollected(ctx: Ctx, guildId: string, v: HalloweenVisitor): boolean {

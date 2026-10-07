@@ -178,3 +178,31 @@ describe('item rewards: channel typed by ID or name', () => {
     expect(text(await w.action('owner', 'visitor', 'rewards', { item: ITEM.name, channel: SECRET, channel_id: SECRET }))).toContain('not both');
   });
 });
+
+describe('edit an item', () => {
+  it('edits any item of a visitor with several items, prefilled, and owners keep it', async () => {
+    const w = await setup();
+    await w.staff('owner', 'player give-item', { member: 'alice', item: ITEM.id, reason: 'test' });
+    const opened = await w.action('owner', 'visitor', 'item', { item: ITEM.name });
+    expect(opened[0]!.type).toBe('modal'); // pressed Continue: the item form opened
+    const form = opened[0]!.payload;
+    expect(form.custom_id).toMatch(/^itemform\|/);
+    expect(JSON.stringify(form)).toContain(`"value":"${ITEM.name}"`); // prefilled
+    expect(form.components.length).toBeLessThanOrEqual(5);
+
+    const saved = text(
+      await w.modal('owner', form.custom_id, { name: 'Golden Pumpkin', rarity: 'legendary', description: 'Glows at midnight.', picture_url: 'https://example.com/pumpkin.png' }),
+    );
+    expect(saved).toContain(`**Name:** ${ITEM.name} → Golden Pumpkin`);
+    expect(saved).toContain('**Rarity:** ⚪ Common → 🟡 Legendary');
+    expect(saved).toContain('**Picture:** none → added');
+    expect(text(await w.command('alice', 'inventory'))).toContain('Golden Pumpkin');
+
+    // A second visitor's item can't take a name its sibling already has.
+    const sibling = DEFAULT_HALLOWEEN_PACK.visitors[0]!.items[1]!;
+    const again = await w.action('owner', 'visitor', 'item', { item: sibling.name });
+    expect(text(await w.modal('owner', again[0]!.payload.custom_id, { name: 'golden pumpkin', rarity: sibling.rarity }))).toContain('already gives an item called');
+    // Members can't open the form.
+    expect(text(await w.action('alice', 'visitor', 'item', { item: sibling.name }))).toContain('Only server administrators');
+  });
+});

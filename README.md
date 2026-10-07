@@ -113,6 +113,7 @@ Always                /candy [member] · /leaderboard [game] [season] [page] · 
   Remove a visitor                One visitor, or all placeholder visitors
   List visitors
   Visitor classes                 Chance, bonus candy and rarity text of a class
+  Edit an item                    Name, rarity, description and picture of any item → Continue → prefilled form
   Item rewards                    An item gives a role and/or opens a channel for its owner
   Export items (spreadsheet)      Download items as a CSV to mass-edit
   Import items (spreadsheet)      Upload the edited CSV (you confirm the changes first)

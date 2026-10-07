@@ -1,4 +1,4 @@
-import { ActionRowBuilder, AttachmentBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
+import { ActionRowBuilder, AttachmentBuilder, FileUploadBuilder, LabelBuilder, ModalBuilder, StringSelectMenuBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
 import { exportSheet, planImport, SHEET_FILTERS, type ImportPlan, type SheetFilter } from '../../domain/itemSheet.js';
 import { fetchAttachmentText } from './season.js';
 import { RARITIES, type HalloweenVisitor, type Rarity } from '../../content/types.js';
@@ -13,6 +13,7 @@ import {
   ALL_PLACEHOLDERS,
   addVisitor,
   currentPack,
+  editItem,
   editVisitor,
   findVisitorByQuery,
   isPlaceholder,
@@ -20,7 +21,7 @@ import {
   savePack,
   type VisitorInput,
 } from '../../domain/visitors.js';
-import { storeAttachedImage } from '../images.js';
+import { resolveImage, storeAttachedImage } from '../images.js';
 import { assertSafeRewardRole, assertUsableRewardChannel, syncPendingRewards } from '../rewards.js';
 import { getItemReward, itemOwnerCount, listItemRewards, setItemReward } from '../../domain/rewards.js';
 import { findItem, searchItem } from '../../domain/content.js';
@@ -154,6 +155,7 @@ async function submitForm(bot: Bot, i: Component, [token]: string[]) {
     if (before.items.length === 1 && before.items[0]!.name !== after.items[0]!.name) changes.push(`**Collectible:** ${before.items[0]!.name} → ${after.items[0]!.name}`);
     if (before.retired) changes.push('**Status:** retired → appearing again');
   }
+  if (visitor.items.length > 1) changes.push(`*${visitor.name} gives ${visitor.items.length} items. Edit them one by one with \`/visitor\` → **Edit an item**.*`);
   const pack = currentPack(bot.ctx, m.guildId);
   const placeholders = activeVisitors(pack).filter(isPlaceholder).length;
   const tail =
@@ -374,6 +376,93 @@ async function itemRewards(bot: Bot, i: ChatInput) {
   await reply(i, { embeds: [e] });
 }
 
+/** `/visitor` → Edit an item, step 1: find the item, then open its form (behind a Continue button). */
+async function editItemStart(bot: Bot, i: ChatInput) {
+  const found = findItemLoose(currentPack(bot.ctx, i.guildId), i.options.getString('item', true));
+  const { item, visitor } = found;
+  const token = createPending(bot.ctx, i.guildId, i.user.id, 'item.form', { itemId: item.id });
+  const text = (id: string, label: string, value: string | undefined, opts: { required?: boolean; long?: boolean; max: number; description?: string }) => {
+    const t = new TextInputBuilder()
+      .setCustomId(id)
+      .setStyle(opts.long ? TextInputStyle.Paragraph : TextInputStyle.Short)
+      .setRequired(!!opts.required)
+      .setMaxLength(opts.max);
+    if (value) t.setValue(value.slice(0, opts.max));
+    const l = new LabelBuilder().setLabel(label).setTextInputComponent(t);
+    if (opts.description) l.setDescription(opts.description);
+    return l;
+  };
+  const link = item.image && /^https?:\/\//.test(item.image) ? item.image : undefined;
+  const modal = new ModalBuilder()
+    .setCustomId(cid('itemform', token))
+    .setTitle(truncate(`Item from ${visitor.name}`, 45))
+    .addLabelComponents(
+      text('name', 'Name', item.name, { required: true, max: 80 }),
+      new LabelBuilder()
+        .setLabel('Rarity')
+        .setStringSelectMenuComponent(
+          new StringSelectMenuBuilder()
+            .setCustomId('rarity')
+            .setRequired(true)
+            .addOptions(RARITIES.map((r) => ({ label: CLASS_LABEL[r], value: r, default: r === item.rarity }))),
+        ),
+      text('description', 'Description', item.description, { long: true, max: 300, description: 'Shown in the winner\'s private message' }),
+      new LabelBuilder()
+        .setLabel('New picture (optional)')
+        .setDescription(item.image ? 'Leave empty to keep the current picture' : 'PNG, JPG, GIF or WEBP, e.g. 512 × 512')
+        .setFileUploadComponent(new FileUploadBuilder().setCustomId('picture').setRequired(false).setMinValues(0).setMaxValues(1)),
+      text('picture_url', '…or a picture link (optional)', link, { max: 500, description: 'Type "none" to remove the picture' }),
+    );
+  await i.showModal(modal);
+}
+
+/** `/visitor` → Edit an item, step 2: save the form. */
+async function submitItemForm(bot: Bot, i: Component, [token]: string[]) {
+  if (!i.isModalSubmit()) return;
+  const m = i as Modal;
+  assertLevel(bot, m.member, 'admin');
+  const { payload } = consumePending<{ itemId: string }>(bot.ctx, m.guildId, m.user.id, token!);
+  const read = <T,>(fn: () => T): T | null => {
+    try {
+      return fn();
+    } catch {
+      return null;
+    }
+  };
+  const rarity = read(() => m.fields.getStringSelectValues('rarity'))?.[0] as Rarity | undefined;
+  const upload = read(() => m.fields.getUploadedFiles('picture', false))?.first();
+  const linkRaw = read(() => m.fields.getTextInputValue('picture_url'))?.trim() ?? '';
+  let image: string | null | undefined;
+  if (upload) {
+    if (upload.contentType && !/^image\/(png|jpe?g|gif|webp)/.test(upload.contentType)) throw new UserError('The picture must be PNG, JPG, GIF or WEBP.');
+    image = await storeAttachedImage(bot, m.guildId, upload.url, upload.size);
+  } else if (REMOVE_PICTURE.test(linkRaw)) image = null;
+  else if (linkRaw) {
+    if (!/^https?:\/\/\S+$/.test(linkRaw)) throw new UserError('The picture link must start with https://');
+    image = linkRaw;
+  }
+  const { before, after, visitor } = editItem(
+    bot.ctx,
+    m.guildId,
+    payload.itemId,
+    { name: read(() => m.fields.getTextInputValue('name')) ?? undefined, rarity, description: read(() => m.fields.getTextInputValue('description')) ?? undefined, image },
+    m.user.id,
+  );
+  const changes: string[] = [];
+  if (before.name !== after.name) changes.push(`**Name:** ${before.name} → ${after.name}`);
+  if (before.rarity !== after.rarity) changes.push(`**Rarity:** ${CLASS_LABEL[before.rarity]} → ${CLASS_LABEL[after.rarity]}`);
+  if (before.description !== after.description) changes.push('**Description:** updated');
+  if ((before.image ?? null) !== (after.image ?? null)) changes.push(`**Picture:** ${!before.image ? 'none → added' : !after.image ? 'removed' : 'replaced'}`);
+  const e = embed(COLORS.halloween, `${after.name}`, after.description).setAuthor({ name: `${CLASS_LABEL[after.rarity]} · from ${visitor.name}` });
+  const img = resolveImage(bot, m.guildId, after.image);
+  if (img) e.setImage(img.url);
+  await reply(m, {
+    content: `${changes.length ? `**What changed**\n${changes.join('\n')}` : '**Nothing changed.**'}\nMembers who own it keep it. This is how it looks:`,
+    embeds: [e],
+    files: img?.file ? [img.file] : [],
+  });
+}
+
 /** Visitor actions, run from the /visitor menu (see panels.ts). */
 export const visitorActions: Record<string, ChatHandler> = {
   'visitor add': add,
@@ -384,6 +473,7 @@ export const visitorActions: Record<string, ChatHandler> = {
   'visitor export': exportItems,
   'visitor import': importItems,
   'visitor rewards': itemRewards,
+  'visitor item': editItemStart,
 };
 
 export const visitorHandlers: HandlerSet = {
@@ -407,6 +497,7 @@ export const visitorHandlers: HandlerSet = {
   },
   components: {
     visitorform: submitForm,
+    itemform: submitItemForm,
     vlist: async (bot, i, [page]) => {
       if (i.isButton()) await (i as Button).update(listView(bot, i.guildId, Number(page)));
     },

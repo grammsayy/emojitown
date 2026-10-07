@@ -268,7 +268,14 @@ export class World {
     const i = this.base(userId, 'general');
     i.isModalSubmit = () => true;
     i.customId = customId;
-    i.fields = { getTextInputValue: (k: string) => fields[k] ?? '' };
+    i.fields = {
+      getTextInputValue: (k: string) => fields[k] ?? '',
+      getStringSelectValues: (k: string) => {
+        if (!(k in fields)) throw new Error(`no field ${k}`);
+        return [fields[k]];
+      },
+      getUploadedFiles: () => null,
+    };
     await route(this.bot, i);
     return i.calls as { type: string; payload: any }[];
   }
