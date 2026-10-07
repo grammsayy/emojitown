@@ -1,4 +1,4 @@
-import { ActionRowBuilder, AttachmentBuilder, FileUploadBuilder, LabelBuilder, ModalBuilder, StringSelectMenuBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
+import { ActionRowBuilder, AttachmentBuilder, ButtonStyle, FileUploadBuilder, LabelBuilder, ModalBuilder, StringSelectMenuBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
 import { exportSheet, planImport, SHEET_FILTERS, type ImportPlan, type SheetFilter } from '../../domain/itemSheet.js';
 import { fetchAttachmentText } from './season.js';
 import { RARITIES, type HalloweenVisitor, type Rarity } from '../../content/types.js';
@@ -28,7 +28,7 @@ import { findItem, searchItem } from '../../domain/content.js';
 import type { Guild, GuildBasedChannel, Role } from 'discord.js';
 import { askConfirm, reply, type Button, type ChatHandler, type ChatInput, type Component, type HandlerSet, type Modal } from '../interaction.js';
 import { assertLevel, type Bot } from '../runtime.js';
-import { cid, COLORS, embed, field, pager, truncate } from '../ui.js';
+import { button, cid, COLORS, embed, field, pager, row, truncate } from '../ui.js';
 import { halloweenPreview } from './halloween.js';
 
 interface FormPayload {
@@ -376,11 +376,65 @@ async function itemRewards(bot: Bot, i: ChatInput) {
   await reply(i, { embeds: [e] });
 }
 
-/** `/visitor` → Edit an item, step 1: find the item, then open its form (behind a Continue button). */
+// ── /visitor → Edit an item: pick a visitor, then one of its items, then edit it ──
+
+const PICKER_PAGE = 25;
+
+/** Step 1: a menu of all visitors (25 per page). */
+function visitorPicker(bot: Bot, guildId: string, page: number) {
+  const active = activeVisitors(currentPack(bot.ctx, guildId));
+  const p = paginate(active, page, PICKER_PAGE);
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(cid('itempick', 'v', p.page))
+    .setPlaceholder('Pick a visitor')
+    .addOptions(
+      p.items.map((v) => ({
+        label: truncate(v.name, 100),
+        value: v.id,
+        description: truncate(`${CLASS_LABEL[visitorClass(v)]} · ${v.items.length} item${v.items.length === 1 ? '' : 's'}: ${v.items.map((x) => x.name).join(', ')}`, 100),
+      })),
+    );
+  const e = embed(COLORS.halloween, '🎁 Edit an item', `Pick a visitor to see the items it gives.${p.pages > 1 ? `\nPage ${p.page} of ${p.pages} (${active.length} visitors).` : ''}`);
+  return {
+    embeds: [e],
+    components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu), ...(p.pages > 1 ? [pager(p, (n) => cid('itempick', 'page', n))] : [])],
+  };
+}
+
+/** Step 2: one visitor's items, with a menu to pick the one to edit. */
+function itemPicker(bot: Bot, guildId: string, visitorId: string, backPage: number) {
+  const visitor = currentPack(bot.ctx, guildId).visitors.find((v) => v.id === visitorId);
+  if (!visitor) throw new UserError('That visitor no longer exists. Run `/visitor` again.');
+  const lines = visitor.items.map((it) => `${CLASS_LABEL[it.rarity]} **${it.name}**${it.image ? ' 🖼️' : ''}\n${truncate(it.description, 120)}`);
+  const e = embed(COLORS.halloween, `🎁 ${truncate(visitor.name, 200)}'s items`, lines.join('\n\n') || 'This visitor gives no items.').setFooter({
+    text: '🖼️ = has a picture. Pick an item below to edit it.',
+  });
+  const avatar = resolveImage(bot, guildId, visitor.image);
+  if (avatar && !avatar.file) e.setThumbnail(avatar.url);
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(cid('itempick', 'i'))
+    .setPlaceholder('Pick an item to edit')
+    .addOptions(visitor.items.slice(0, 25).map((it) => ({ label: truncate(it.name, 100), value: it.id, description: truncate(it.description, 100), emoji: CLASS_LABEL[it.rarity].split(' ')[0] })));
+  return {
+    embeds: [e],
+    components: [
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu),
+      row(button(cid('itempick', 'page', backPage), 'Back to all visitors', ButtonStyle.Secondary, '◀️')),
+    ],
+  };
+}
+
+/** `/visitor` → Edit an item: shows the visitor menu. */
 async function editItemStart(bot: Bot, i: ChatInput) {
-  const found = findItemLoose(currentPack(bot.ctx, i.guildId), i.options.getString('item', true));
+  await reply(i, visitorPicker(bot, i.guildId, 1));
+}
+
+/** Step 3: the item's form, filled in with its current values. */
+function itemModal(bot: Bot, guildId: string, userId: string, itemId: string): ModalBuilder {
+  const found = findItem(currentPack(bot.ctx, guildId), itemId);
+  if (!found) throw new UserError('That item no longer exists. Run `/visitor` again.');
   const { item, visitor } = found;
-  const token = createPending(bot.ctx, i.guildId, i.user.id, 'item.form', { itemId: item.id });
+  const token = createPending(bot.ctx, guildId, userId, 'item.form', { itemId: item.id });
   const text = (id: string, label: string, value: string | undefined, opts: { required?: boolean; long?: boolean; max: number; description?: string }) => {
     const t = new TextInputBuilder()
       .setCustomId(id)
@@ -413,7 +467,17 @@ async function editItemStart(bot: Bot, i: ChatInput) {
         .setFileUploadComponent(new FileUploadBuilder().setCustomId('picture').setRequired(false).setMinValues(0).setMaxValues(1)),
       text('picture_url', '…or a picture link (optional)', link, { max: 500, description: 'Type "none" to remove the picture' }),
     );
-  await i.showModal(modal);
+  return modal;
+}
+
+/** Menu and button clicks in the item picker. */
+async function itemPickerClick(bot: Bot, i: Component, [action, arg]: string[]) {
+  if (action === 'i' && i.isStringSelectMenu()) return void (await i.showModal(itemModal(bot, i.guildId, i.user.id, i.values[0]!)));
+  const page = Number(arg) || 1;
+  const view = action === 'v' && i.isStringSelectMenu() ? itemPicker(bot, i.guildId, i.values[0]!, page) : action === 'vis' ? itemPicker(bot, i.guildId, arg!, 1) : visitorPicker(bot, i.guildId, page);
+  // From a fresh reply (after saving) the picker opens as a new private message; otherwise it replaces the menu.
+  if (i.isButton() && action === 'vis') return reply(i, view);
+  await (i as Button).update(view);
 }
 
 /** `/visitor` → Edit an item, step 2: save the form. */
@@ -460,6 +524,7 @@ async function submitItemForm(bot: Bot, i: Component, [token]: string[]) {
     content: `${changes.length ? `**What changed**\n${changes.join('\n')}` : '**Nothing changed.**'}\nMembers who own it keep it. This is how it looks:`,
     embeds: [e],
     files: img?.file ? [img.file] : [],
+    components: [row(button(cid('itempick', 'vis', visitor.id), `Edit another item from ${truncate(visitor.name, 40)}`, ButtonStyle.Primary, '🎁'))],
   });
 }
 
@@ -498,6 +563,7 @@ export const visitorHandlers: HandlerSet = {
   components: {
     visitorform: submitForm,
     itemform: submitItemForm,
+    itempick: itemPickerClick,
     vlist: async (bot, i, [page]) => {
       if (i.isButton()) await (i as Button).update(listView(bot, i.guildId, Number(page)));
     },

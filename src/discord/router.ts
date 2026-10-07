@@ -28,7 +28,7 @@ for (const set of SETS) {
 }
 
 /** Staff components whose own handlers do not re-check permissions. */
-const COMPONENT_LEVELS: Record<string, Level> = { advedit: 'admin', visitorform: 'admin', itemform: 'admin', vlist: 'admin' };
+const COMPONENT_LEVELS: Record<string, Level> = { advedit: 'admin', visitorform: 'admin', itemform: 'admin', itempick: 'admin', vlist: 'admin' };
 
 /** Which game's seasons a `season` option should suggest. */
 function seasonFeature(i: AutocompleteInteraction<'cached'>): Feature | undefined {

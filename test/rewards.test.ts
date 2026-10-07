@@ -180,29 +180,54 @@ describe('item rewards: channel typed by ID or name', () => {
 });
 
 describe('edit an item', () => {
-  it('edits any item of a visitor with several items, prefilled, and owners keep it', async () => {
+  it('pick a visitor from a menu, then one of its items, edit it prefilled; owners keep it', async () => {
     const w = await setup();
     await w.staff('owner', 'player give-item', { member: 'alice', item: ITEM.id, reason: 'test' });
-    const opened = await w.action('owner', 'visitor', 'item', { item: ITEM.name });
-    expect(opened[0]!.type).toBe('modal'); // pressed Continue: the item form opened
-    const form = opened[0]!.payload;
-    expect(form.custom_id).toMatch(/^itemform\|/);
-    expect(JSON.stringify(form)).toContain(`"value":"${ITEM.name}"`); // prefilled
-    expect(form.components.length).toBeLessThanOrEqual(5);
+    const visitor = DEFAULT_HALLOWEEN_PACK.visitors[0]!;
 
-    const saved = text(
-      await w.modal('owner', form.custom_id, { name: 'Golden Pumpkin', rarity: 'legendary', description: 'Glows at midnight.', picture_url: 'https://example.com/pumpkin.png' }),
-    );
-    expect(saved).toContain(`**Name:** ${ITEM.name} → Golden Pumpkin`);
-    expect(saved).toContain('**Rarity:** ⚪ Common → 🟡 Legendary');
-    expect(saved).toContain('**Picture:** none → added');
+    // 1. The visitor menu (40 visitors: 2 pages of up to 25).
+    const opened = await w.action('owner', 'visitor', 'item');
+    const picker = opened.find((c) => c.type !== 'update')!; // the menu refreshes first, then the picker arrives
+    expect(text([picker])).toContain('Page 1 of 2');
+    expect(text([picker])).toContain(visitor.name);
+    const page2 = await w.button('owner', findCustomId(picker.payload, 'itempick|page|2')!);
+    expect(page2[0]!.type).toBe('update');
+    expect(text(page2)).toContain('Page 2 of 2');
+
+    // 2. Pick a visitor: its items are listed.
+    const items = await w.select('owner', 'itempick|v|1', [visitor.id]);
+    expect(items[0]!.type).toBe('update');
+    for (const it of visitor.items) expect(text(items)).toContain(it.name);
+    expect(findCustomId(items[0]!.payload, 'itempick|page|1')).toBeDefined(); // back button
+
+    // 3. Pick an item: its form opens straight away, prefilled.
+    const form = (await w.select('owner', 'itempick|i', [ITEM.id]))[0]!;
+    expect(form.type).toBe('modal');
+    expect(form.payload.custom_id).toMatch(/^itemform\|/);
+    expect(JSON.stringify(form.payload)).toContain(`"value":"${ITEM.name}"`);
+    expect(form.payload.components.length).toBeLessThanOrEqual(5);
+
+    const saved = await w.modal('owner', form.payload.custom_id, {
+      name: 'Golden Pumpkin',
+      rarity: 'legendary',
+      description: 'Glows at midnight.',
+      picture_url: 'https://example.com/pumpkin.png',
+    });
+    expect(text(saved)).toContain(`**Name:** ${ITEM.name} → Golden Pumpkin`);
+    expect(text(saved)).toContain('**Rarity:** ⚪ Common → 🟡 Legendary');
+    expect(text(saved)).toContain('**Picture:** none → added');
     expect(text(await w.command('alice', 'inventory'))).toContain('Golden Pumpkin');
 
-    // A second visitor's item can't take a name its sibling already has.
-    const sibling = DEFAULT_HALLOWEEN_PACK.visitors[0]!.items[1]!;
-    const again = await w.action('owner', 'visitor', 'item', { item: sibling.name });
-    expect(text(await w.modal('owner', again[0]!.payload.custom_id, { name: 'golden pumpkin', rarity: sibling.rarity }))).toContain('already gives an item called');
-    // Members can't open the form.
-    expect(text(await w.action('alice', 'visitor', 'item', { item: sibling.name }))).toContain('Only server administrators');
+    // 4. "Edit another item" goes back to this visitor's items.
+    const another = await w.button('owner', findCustomId(saved[0]!.payload, 'itempick|vis|')!);
+    expect(text(another)).toContain('Golden Pumpkin');
+
+    // Two items from the same visitor can't share a name.
+    const sibling = visitor.items[1]!;
+    const form2 = (await w.select('owner', 'itempick|i', [sibling.id]))[0]!;
+    expect(text(await w.modal('owner', form2.payload.custom_id, { name: 'golden pumpkin', rarity: sibling.rarity }))).toContain('already gives an item called');
+
+    // Members can't use the picker.
+    expect(text(await w.select('alice', 'itempick|i', [sibling.id]))).toContain('Only server administrators');
   });
 });

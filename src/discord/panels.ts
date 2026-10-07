@@ -489,10 +489,9 @@ export const PANELS: Record<Panel['name'], Panel> = {
       {
         id: 'item',
         label: 'Edit an item',
-        description: "Name, rarity, description and picture of any item a visitor gives",
+        description: 'Pick a visitor, then one of its items: name, rarity, description, picture',
         emoji: '🎁',
         level: 'admin',
-        fields: () => [itemField('Name of the item (or part of it), as in /inventory or the spreadsheet')],
         run: run('visitor item'),
       },
       {
